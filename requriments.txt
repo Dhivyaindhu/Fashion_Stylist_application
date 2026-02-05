@@ -1,6 +1,6 @@
 streamlit
-opencv-python
-mediapipe
-tensorflow
 numpy
 pillow
+mediapipe
+tensorflow
+opencv-python-headless
