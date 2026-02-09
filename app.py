@@ -214,10 +214,18 @@ with st.spinner("🔍 Analyzing body structure and proportions..."):
     body_mask1 = gray > threshold
     
     # Edge-based detection
-    grad_x = np.abs(np.diff(gray, axis=1, prepend=gray[:, :1]))
-    grad_y = np.abs(np.diff(gray, axis=0, prepend=gray[:1, :]))
-    edges = grad_x[:, :-1] + grad_y[:-1, :]
-    body_mask2 = edges > np.percentile(edges, 40)
+    grad_x = np.abs(np.diff(gray, axis=1))
+    grad_y = np.abs(np.diff(gray, axis=0))
+    
+    # Ensure both gradients have same shape
+    min_rows = min(grad_x.shape[0], grad_y.shape[0])
+    min_cols = min(grad_x.shape[1], grad_y.shape[1])
+    
+    edges = grad_x[:min_rows, :min_cols] + grad_y[:min_rows, :min_cols]
+    
+    # Resize body_mask2 to match original gray shape
+    body_mask2 = np.zeros_like(gray, dtype=bool)
+    body_mask2[:min_rows, :min_cols] = edges > np.percentile(edges, 40)
     
     # Combine masks
     body_mask = body_mask1 | body_mask2
@@ -431,11 +439,10 @@ def create_3d_mannequin(measurements, category, rotation_angle=0):
     shaded_color = tuple(int(c * light_intensity) for c in base_color)
     
     # Draw shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.1)'
     shadow_width = scale_width(hip_w) * 0.8
     draw.ellipse([
-        center_x - shadow_width//2, 770,
-        center_x + shadow_width//2, 790
+        center_x - int(shadow_width//2), 770,
+        center_x + int(shadow_width//2), 790
     ], fill=(200, 200, 200, 50))
     
     # Draw head
