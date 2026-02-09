@@ -328,60 +328,126 @@ st.session_state.measurements = measurements
 # Professional Classification
 # --------------------------------------------------
 def classify_professional(measurements, img_h):
-    """Professional size classification"""
+    """Professional size classification with improved accuracy"""
     
     height_ratio = measurements["total_height"] / img_h
     aspect_ratio = measurements["height_width_ratio"]
     shoulder_hip = measurements["shoulder_hip_ratio"]
     waist_hip = measurements["waist_hip_ratio"]
+    height_cm = measurements["height_cm"]
     
-    # Kids detection
-    if height_ratio < 0.65 or aspect_ratio > 2.8:
+    # Enhanced Kids detection (multiple criteria)
+    # Kids typically: shorter height, higher proportions, less body definition
+    kids_score = 0
+    
+    # Height-based detection (most reliable)
+    if height_cm < 150:
+        kids_score += 3
+    elif height_cm < 160:
+        kids_score += 1
+    
+    # Proportion-based detection
+    if height_ratio < 0.70:
+        kids_score += 2
+    
+    if aspect_ratio > 2.6:
+        kids_score += 2
+    
+    # Body definition (kids have less defined curves)
+    if abs(shoulder_hip - 1.0) < 0.08 and abs(waist_hip - 1.0) < 0.12:
+        kids_score += 1
+    
+    # Classify as Kids if score >= 4
+    if kids_score >= 4:
         category = "Kids"
-        if height_ratio < 0.45:
+        if height_cm < 115 or height_ratio < 0.50:
             size = "4-6Y"
-        elif height_ratio < 0.55:
+        elif height_cm < 135 or height_ratio < 0.60:
             size = "7-9Y"
         else:
             size = "10-12Y"
         fit_score = 0.88
     else:
-        # Adult classification
-        gender_score = (shoulder_hip - 1.0) * 2 + (1.0 - waist_hip) * 1.5
+        # Adult classification - Enhanced Men vs Women detection
         
-        if gender_score > 0.15 or aspect_ratio < 1.9:
+        # Multiple factors for gender classification:
+        # 1. Shoulder/Hip ratio (Men typically > 1.05, Women typically 0.95-1.05)
+        # 2. Waist/Hip ratio (Men typically > 0.88, Women typically < 0.85)
+        # 3. Body proportions
+        
+        # Calculate gender score (positive = Men, negative = Women)
+        gender_score = 0
+        
+        # Shoulder-Hip ratio analysis
+        if shoulder_hip > 1.10:
+            gender_score += 3  # Strong indicator of Men
+        elif shoulder_hip > 1.05:
+            gender_score += 2  # Moderate indicator of Men
+        elif shoulder_hip < 0.98:
+            gender_score -= 2  # Moderate indicator of Women
+        elif shoulder_hip < 1.02:
+            gender_score -= 1  # Slight indicator of Women
+        
+        # Waist-Hip ratio analysis
+        if waist_hip > 0.92:
+            gender_score += 2  # Indicator of Men (less waist definition)
+        elif waist_hip > 0.88:
+            gender_score += 1
+        elif waist_hip < 0.80:
+            gender_score -= 2  # Indicator of Women (more waist definition)
+        elif waist_hip < 0.85:
+            gender_score -= 1
+        
+        # Height/Width aspect ratio
+        if aspect_ratio < 2.0:
+            gender_score += 1  # Men typically broader
+        elif aspect_ratio > 2.3:
+            gender_score -= 1  # Women typically more elongated
+        
+        # Final classification
+        if gender_score > 1:
             category = "Men"
-        else:
+        elif gender_score < -1:
             category = "Women"
+        else:
+            # Ambiguous case - use shoulder-hip ratio as tiebreaker
+            if shoulder_hip > 1.03:
+                category = "Men"
+            else:
+                category = "Women"
         
-        # Size based on multiple factors
+        # Size calculation based on body measurements
         shoulder_percentile = measurements["shoulder_width"] / measurements["body_region_w"]
         waist_percentile = measurements["waist_width"] / measurements["body_region_w"]
+        hip_percentile = measurements["hip_width"] / measurements["body_region_w"]
         
-        size_score = (shoulder_percentile * 0.6) + (waist_percentile * 0.4)
-        
+        # Weighted size score
         if category == "Men":
-            if size_score < 0.65:
+            size_score = (shoulder_percentile * 0.5) + (waist_percentile * 0.3) + (hip_percentile * 0.2)
+            
+            if size_score < 0.62:
                 size = "S"
-            elif size_score < 0.75:
+            elif size_score < 0.72:
                 size = "M"
-            elif size_score < 0.85:
+            elif size_score < 0.82:
                 size = "L"
             else:
                 size = "XL"
         else:  # Women
-            if size_score < 0.60:
+            size_score = (shoulder_percentile * 0.3) + (waist_percentile * 0.3) + (hip_percentile * 0.4)
+            
+            if size_score < 0.58:
                 size = "XS"
-            elif size_score < 0.68:
+            elif size_score < 0.66:
                 size = "S"
-            elif size_score < 0.76:
+            elif size_score < 0.74:
                 size = "M"
-            elif size_score < 0.84:
+            elif size_score < 0.82:
                 size = "L"
             else:
                 size = "XL"
         
-        fit_score = 0.92
+        fit_score = 0.91
     
     return category, size, fit_score
 
@@ -640,7 +706,7 @@ with metrics_cols[3]:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Detailed measurements
-with st.expander("📏 View Detailed Body Measurements"):
+with st.expander("📏 View Detailed Body Measurements & Classification"):
     measure_cols = st.columns(3)
     with measure_cols[0]:
         st.markdown("**Upper Body**")
@@ -658,12 +724,100 @@ with st.expander("📏 View Detailed Body Measurements"):
         st.write(f"Shoulder/Hip: {measurements['shoulder_hip_ratio']:.2f}")
         st.write(f"Waist/Hip: {measurements['waist_hip_ratio']:.2f}")
         st.write(f"Height/Width: {measurements['height_width_ratio']:.2f}")
+    
+    # Classification explanation
+    st.markdown("---")
+    st.markdown("**🤖 Classification Details:**")
+    
+    if category == "Kids":
+        st.info(f"""
+        **Detected as Kids** because:
+        - Height: {measurements['height_cm']} cm (< 150cm indicates child)
+        - Body proportions indicate developing physique
+        - Less defined body curves typical of children
+        """)
+    elif category == "Men":
+        st.info(f"""
+        **Detected as Men** because:
+        - Shoulder/Hip ratio: {measurements['shoulder_hip_ratio']:.2f} (Men typically > 1.05)
+        - Waist/Hip ratio: {measurements['waist_hip_ratio']:.2f} (Men typically > 0.88)
+        - Broader shoulders relative to hips
+        """)
+    else:
+        st.info(f"""
+        **Detected as Women** because:
+        - Shoulder/Hip ratio: {measurements['shoulder_hip_ratio']:.2f} (Women typically 0.95-1.05)
+        - Waist/Hip ratio: {measurements['waist_hip_ratio']:.2f} (Women typically < 0.85)
+        - More defined waist relative to hips
+        """)
+    
+    st.warning("💡 **Note:** Classification is based on body measurements only. If incorrect, you can manually browse other categories below.")
 
 # --------------------------------------------------
 # Dress Catalog
 # --------------------------------------------------
 st.markdown("---")
 st.markdown("## 👗 Step 5: Browse & Select Outfits")
+
+# Add category override option
+st.markdown("### 🔄 Category Selection")
+override_cols = st.columns([2, 1])
+
+with override_cols[0]:
+    st.info(f"📊 Auto-detected: **{category}** (Size: **{size}**)")
+
+with override_cols[1]:
+    browse_category = st.selectbox(
+        "Browse different category:",
+        options=["Auto-Detected", "Men", "Women", "Kids"],
+        help="Select manually if auto-detection is incorrect"
+    )
+
+# Use override if selected
+if browse_category != "Auto-Detected":
+    display_category = browse_category
+    st.warning(f"🔄 Browsing **{browse_category}** collection (overriding auto-detection)")
+else:
+    display_category = category
+
+# Adjust size for browsed category if different
+if display_category != category:
+    # Recalculate size for the browsed category
+    shoulder_percentile = measurements["shoulder_width"] / measurements["body_region_w"]
+    waist_percentile = measurements["waist_width"] / measurements["body_region_w"]
+    hip_percentile = measurements["hip_width"] / measurements["body_region_w"]
+    
+    if display_category == "Kids":
+        if measurements["height_cm"] < 115:
+            display_size = "4-6Y"
+        elif measurements["height_cm"] < 135:
+            display_size = "7-9Y"
+        else:
+            display_size = "10-12Y"
+    elif display_category == "Men":
+        size_score = (shoulder_percentile * 0.5) + (waist_percentile * 0.3) + (hip_percentile * 0.2)
+        if size_score < 0.62:
+            display_size = "S"
+        elif size_score < 0.72:
+            display_size = "M"
+        elif size_score < 0.82:
+            display_size = "L"
+        else:
+            display_size = "XL"
+    else:  # Women
+        size_score = (shoulder_percentile * 0.3) + (waist_percentile * 0.3) + (hip_percentile * 0.4)
+        if size_score < 0.58:
+            display_size = "XS"
+        elif size_score < 0.66:
+            display_size = "S"
+        elif size_score < 0.74:
+            display_size = "M"
+        elif size_score < 0.82:
+            display_size = "L"
+        else:
+            display_size = "XL"
+else:
+    display_size = size
 
 def get_dress_catalog(category, size):
     """Get curated dress catalog with real shopping links"""
@@ -860,13 +1014,13 @@ def get_dress_catalog(category, size):
             }
         ]
 
-catalog = get_dress_catalog(category, size)
+catalog = get_dress_catalog(display_category, display_size)
 
-st.markdown(f"### 🎯 Recommended for {category} - Size **{size}**")
+st.markdown(f"### 🎯 Recommended for {display_category} - Size **{display_size}**")
 st.info(f"💡 Showing {len(catalog)} outfits perfectly matched to your measurements")
 
 # Create columns for products
-num_cols = 4 if category == "Women" else 3
+num_cols = 4 if display_category == "Women" else 3
 product_cols = st.columns(num_cols)
 
 for idx, dress in enumerate(catalog):
@@ -1054,7 +1208,7 @@ if st.session_state.selected_dress:
     
     tryon_result = apply_dress_to_3d_mannequin(
         measurements,
-        category,
+        display_category,
         selected,
         st.session_state.rotation_angle
     )
