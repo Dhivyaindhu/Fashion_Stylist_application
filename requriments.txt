@@ -1,6 +1,14 @@
 streamlit==1.54.0
+
+# Core numerical & image handling
 numpy==2.4.2
 pillow==12.1.0
+
+# OpenCV (Cloud compatible – NO GUI dependencies)
 opencv-python-headless==4.10.0.84
+
+# HTTP requests (for product links / APIs later)
 requests==2.32.5
 
+# MediaPipe for pose detection (REQUIRED)
+mediapipe==0.10.21
