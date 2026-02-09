@@ -1,19 +1,18 @@
 # Streamlit framework
-streamlit
+streamlit==1.31.0
 
 # Core numerical & image handling
-numpy
-pillow
+numpy==1.24.3
+pillow==10.0.0
 
 # OpenCV (Cloud compatible – NO GUI dependencies)
-opencv-python-headless
+opencv-python-headless==4.8.1.78
 
-# MediaPipe for pose detection - STREAMLIT CLOUD COMPATIBLE
-mediapipe
+# MediaPipe for pose detection - Python 3.10 compatible
+mediapipe==0.10.8
 
 # Protobuf compatibility (required for mediapipe)
-protobuf
+protobuf==3.20.3
 
 # Additional utilities
-attrs
-
+attrs==23.1.0
