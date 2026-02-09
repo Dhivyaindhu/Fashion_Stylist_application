@@ -337,28 +337,42 @@ def classify_professional(measurements, img_h):
     height_cm = measurements["height_cm"]
     
     # Enhanced Kids detection (multiple criteria)
-    # Kids typically: shorter height, higher proportions, less body definition
+    # Kids typically: shorter height, similar shoulder/hip ratios (around 1.0), less curves
     kids_score = 0
     
-    # Height-based detection (most reliable)
-    if height_cm < 150:
-        kids_score += 3
-    elif height_cm < 160:
-        kids_score += 1
+    # Height-based detection (MOST RELIABLE)
+    if height_cm < 140:
+        kids_score += 5  # Very strong indicator
+    elif height_cm < 155:
+        kids_score += 3  # Strong indicator
+    elif height_cm < 165:
+        kids_score += 1  # Possible indicator
     
     # Proportion-based detection
-    if height_ratio < 0.70:
+    if height_ratio < 0.75:
         kids_score += 2
-    
-    if aspect_ratio > 2.6:
-        kids_score += 2
-    
-    # Body definition (kids have less defined curves)
-    if abs(shoulder_hip - 1.0) < 0.08 and abs(waist_hip - 1.0) < 0.12:
+    elif height_ratio < 0.80:
         kids_score += 1
     
-    # Classify as Kids if score >= 4
-    if kids_score >= 4:
+    # Aspect ratio (kids are more proportional)
+    if aspect_ratio < 1.8:
+        kids_score += 2  # Kids tend to have lower aspect ratios
+    elif aspect_ratio < 2.0:
+        kids_score += 1
+    
+    # Body definition - Kids have VERY similar shoulder/hip/waist ratios (all around 1.0)
+    # This is KEY: If all ratios are close to 1.0, it's likely a child with undeveloped body
+    ratio_variance = abs(shoulder_hip - 1.0) + abs(waist_hip - 1.0)
+    
+    if ratio_variance < 0.10:  # Very similar ratios = child's body
+        kids_score += 3
+    elif ratio_variance < 0.15:
+        kids_score += 2
+    elif ratio_variance < 0.20:
+        kids_score += 1
+    
+    # Classify as Kids if score >= 5
+    if kids_score >= 5:
         category = "Kids"
         if height_cm < 115 or height_ratio < 0.50:
             size = "4-6Y"
@@ -367,51 +381,60 @@ def classify_professional(measurements, img_h):
         else:
             size = "10-12Y"
         fit_score = 0.88
+        
     else:
         # Adult classification - Enhanced Men vs Women detection
+        # Only reach here if definitively NOT a child
         
         # Multiple factors for gender classification:
-        # 1. Shoulder/Hip ratio (Men typically > 1.05, Women typically 0.95-1.05)
-        # 2. Waist/Hip ratio (Men typically > 0.88, Women typically < 0.85)
-        # 3. Body proportions
+        # Men: Broader shoulders (ratio > 1.05) OR less waist definition (ratio > 0.90)
+        # Women: Balanced/wider hips (ratio 0.95-1.05) AND defined waist (ratio < 0.85)
         
         # Calculate gender score (positive = Men, negative = Women)
         gender_score = 0
         
         # Shoulder-Hip ratio analysis
-        if shoulder_hip > 1.10:
+        if shoulder_hip > 1.12:
+            gender_score += 4  # Very strong indicator of Men
+        elif shoulder_hip > 1.08:
             gender_score += 3  # Strong indicator of Men
         elif shoulder_hip > 1.05:
             gender_score += 2  # Moderate indicator of Men
-        elif shoulder_hip < 0.98:
+        elif shoulder_hip < 0.95:
+            gender_score -= 3  # Strong indicator of Women (wider hips)
+        elif shoulder_hip < 1.00:
             gender_score -= 2  # Moderate indicator of Women
-        elif shoulder_hip < 1.02:
+        elif shoulder_hip < 1.03:
             gender_score -= 1  # Slight indicator of Women
         
-        # Waist-Hip ratio analysis
-        if waist_hip > 0.92:
-            gender_score += 2  # Indicator of Men (less waist definition)
+        # Waist-Hip ratio analysis (IMPORTANT FOR GENDER)
+        if waist_hip > 0.95:
+            gender_score += 3  # Strong indicator of Men (minimal waist definition)
+        elif waist_hip > 0.90:
+            gender_score += 2  # Moderate indicator of Men
         elif waist_hip > 0.88:
             gender_score += 1
+        elif waist_hip < 0.75:
+            gender_score -= 3  # Strong indicator of Women (defined waist)
         elif waist_hip < 0.80:
-            gender_score -= 2  # Indicator of Women (more waist definition)
+            gender_score -= 2  # Moderate indicator of Women
         elif waist_hip < 0.85:
             gender_score -= 1
         
         # Height/Width aspect ratio
-        if aspect_ratio < 2.0:
+        if aspect_ratio < 1.9:
             gender_score += 1  # Men typically broader
-        elif aspect_ratio > 2.3:
+        elif aspect_ratio > 2.4:
             gender_score -= 1  # Women typically more elongated
         
-        # Final classification
-        if gender_score > 1:
+        # Final classification (need stronger evidence for men)
+        if gender_score >= 3:
             category = "Men"
-        elif gender_score < -1:
+        elif gender_score <= -2:
             category = "Women"
         else:
             # Ambiguous case - use shoulder-hip ratio as tiebreaker
-            if shoulder_hip > 1.03:
+            if shoulder_hip > 1.05:
                 category = "Men"
             else:
                 category = "Women"
@@ -730,28 +753,31 @@ with st.expander("📏 View Detailed Body Measurements & Classification"):
     st.markdown("**🤖 Classification Details:**")
     
     if category == "Kids":
-        st.info(f"""
-        **Detected as Kids** because:
-        - Height: {measurements['height_cm']} cm (< 150cm indicates child)
-        - Body proportions indicate developing physique
-        - Less defined body curves typical of children
+        st.success(f"""
+        **✅ Detected as Kids** because:
+        - Height: {measurements['height_cm']} cm (Kids typically < 155cm)
+        - Body proportions: Shoulder/Hip ratio {measurements['shoulder_hip_ratio']:.2f} and Waist/Hip ratio {measurements['waist_hip_ratio']:.2f} are very similar (around 1.0)
+        - This indicates an undeveloped, child's body with minimal curves
+        - Size recommendation: **{size}** based on height
         """)
     elif category == "Men":
         st.info(f"""
         **Detected as Men** because:
-        - Shoulder/Hip ratio: {measurements['shoulder_hip_ratio']:.2f} (Men typically > 1.05)
-        - Waist/Hip ratio: {measurements['waist_hip_ratio']:.2f} (Men typically > 0.88)
-        - Broader shoulders relative to hips
+        - Shoulder/Hip ratio: {measurements['shoulder_hip_ratio']:.2f} (Men typically ≥ 1.05)
+        - Waist/Hip ratio: {measurements['waist_hip_ratio']:.2f} (Men typically ≥ 0.88)
+        - Height: {measurements['height_cm']} cm (Adult height)
+        - Body shows broader shoulders and less waist definition typical of adult males
         """)
     else:
         st.info(f"""
         **Detected as Women** because:
         - Shoulder/Hip ratio: {measurements['shoulder_hip_ratio']:.2f} (Women typically 0.95-1.05)
         - Waist/Hip ratio: {measurements['waist_hip_ratio']:.2f} (Women typically < 0.85)
-        - More defined waist relative to hips
+        - Height: {measurements['height_cm']} cm (Adult height)
+        - Body shows defined waist relative to hips typical of adult females
         """)
     
-    st.warning("💡 **Note:** Classification is based on body measurements only. If incorrect, you can manually browse other categories below.")
+    st.warning("💡 **Note:** If the detection is incorrect, use the dropdown below to manually select the correct category.")
 
 # --------------------------------------------------
 # Dress Catalog
