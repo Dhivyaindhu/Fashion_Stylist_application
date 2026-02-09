@@ -1,8 +1,15 @@
 import streamlit as st
-import json
+import numpy as np
 from PIL import Image
-import time
-import os
+import cv2
+
+# ---- Your internal modules ----
+from core.pose import detect_pose
+from core.measurements import extract_body_measurements
+from core.classifier import classify_person
+from core.avatar import generate_avatar
+from core.tryon import apply_tryon
+from utils.recommendations import recommend_clothes
 
 # --------------------------------------------------
 # Page Config
@@ -13,125 +20,95 @@ st.set_page_config(
 )
 
 st.title("👗 AI Virtual Fashion Stylist")
-st.caption("Avatar-based size detection & fashion recommendations")
+st.caption("Instant body-size detection & virtual try-on")
 
-st.markdown(
-    """
-    **How it works**
-    1. Upload your photo in Colab
-    2. AI creates avatar + size + category
-    3. Results are shown here with virtual try-on
-    """
+st.markdown("""
+### How it works
+1. Upload a **full-body image**
+2. AI detects body structure
+3. Avatar + size are generated
+4. Clothes are recommended
+5. Virtual try-on preview shown
+""")
+
+# --------------------------------------------------
+# Image Upload (POP-UP)
+# --------------------------------------------------
+uploaded = st.file_uploader(
+    "📸 Upload a clear full-body image",
+    type=["jpg", "jpeg", "png"]
 )
 
-# --------------------------------------------------
-# Load AI Output (from Colab)
-# --------------------------------------------------
-RESULT_FILE = "result.json"
-AVATAR_FOLDER = "avatars"
-
-if not os.path.exists(RESULT_FILE):
-    st.warning("⚠️ AI results not found. Please run the Colab model first.")
+if uploaded is None:
+    st.info("⬆️ Please upload an image to begin.")
     st.stop()
 
-with open(RESULT_FILE, "r") as f:
-    data = json.load(f)
+# --------------------------------------------------
+# Load Image
+# --------------------------------------------------
+image = Image.open(uploaded).convert("RGB")
+image_np = np.array(image)
 
-category = data["category"]
-size = data["size"]
-age = data["age"]
-measurements = data["measurements"]
+st.image(image, caption="Uploaded Image", width=280)
 
 # --------------------------------------------------
-# Display Results
+# Pose Detection
 # --------------------------------------------------
+with st.spinner("🔍 Detecting body pose..."):
+    landmarks = detect_pose(image_np)
+
+if landmarks is None:
+    st.error("❌ Full body not detected. Try another image.")
+    st.stop()
+
+# --------------------------------------------------
+# Measurements & Classification
+# --------------------------------------------------
+measurements = extract_body_measurements(landmarks)
+category, size = classify_person(measurements)
+
 st.success("✅ Analysis Complete")
 
 col1, col2 = st.columns(2)
-
-with col1:
-    st.metric("Category", category)
-    st.metric("Size", size)
-
-with col2:
-    st.metric("Age", age)
+col1.metric("Category", category)
+col2.metric("Size", size)
 
 st.subheader("📏 Body Measurements")
 st.json(measurements)
 
 # --------------------------------------------------
-# Show Avatar
+# Avatar Generation
 # --------------------------------------------------
-st.subheader("🧍 Your AI Avatar")
+st.subheader("🧍 Generated Avatar")
 
-frames = sorted([
-    f for f in os.listdir(AVATAR_FOLDER)
-    if f.endswith(".png")
-])
+avatar = generate_avatar(image_np)
+st.image(avatar, width=260)
 
-if not frames:
-    st.error("Avatar images not found.")
-    st.stop()
+# --------------------------------------------------
+# Virtual Try-On
+# --------------------------------------------------
+st.subheader("👕 Virtual Try-On")
 
-avatar_placeholder = st.empty()
-
-for frame in frames:
-    img = Image.open(os.path.join(AVATAR_FOLDER, frame))
-    avatar_placeholder.image(img, width=300)
-    time.sleep(0.08)
+tryon_img = apply_tryon(avatar, category)
+st.image(tryon_img, width=260)
 
 # --------------------------------------------------
 # Outfit Recommendations
 # --------------------------------------------------
-st.subheader("👕 Recommended Outfits")
+st.subheader("🛒 Recommended Outfits")
 
-def recommend(category, size):
-    if category == "Kids":
-        return [
-            ("Kids Hoodie", "https://www.myntra.com"),
-            ("Kids Jeans", "https://www.amazon.in")
-        ]
-
-    if category == "Men":
-        return [
-            ("Casual Shirt", "https://www.flipkart.com"),
-            ("T-Shirt", "https://www.myntra.com"),
-            ("Jeans", "https://www.amazon.in")
-        ]
-
-    if category == "Women":
-        return [
-            ("Kurti", "https://www.myntra.com"),
-            ("Dress", "https://www.amazon.in"),
-            ("Top", "https://www.flipkart.com")
-        ]
-
-    return []
-
-items = recommend(category, size)
+items = recommend_clothes(category, size)
 
 cols = st.columns(len(items))
 
-for col, (name, link) in zip(cols, items):
+for col, item in zip(cols, items):
     with col:
-        st.image("https://via.placeholder.com/200x260.png?text=" + name)
-        st.markdown(f"**{name}**")
-        st.markdown(f"[🛒 Buy Now]({link})")
-
-# --------------------------------------------------
-# Virtual Try-On (Concept)
-# --------------------------------------------------
-st.subheader("👗 Virtual Try-On (Demo)")
-st.info("Outfits can be overlaid on the avatar in the next phase (OpenCV / 3D).")
-
-st.image(
-    Image.open(os.path.join(AVATAR_FOLDER, frames[0])),
-    caption="Avatar base for try-on",
-    width=300
-)
+        st.image(item["image"], width=180)
+        st.markdown(f"**{item['name']}**")
+        st.markdown(f"[Buy on {item['site']}]({item['url']})")
 
 # --------------------------------------------------
 # Footer
 # --------------------------------------------------
 st.markdown("---")
-st.caption("🚀 Powered by AI | Built with Streamlit")
+st.caption("🚀 AI Virtual Fashion Stylist | Streamlit Deployment")
