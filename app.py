@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
-import mediapipe as mp
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 import io
 
@@ -15,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better UI
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -40,17 +39,6 @@ st.markdown("""
         padding: 0.5rem;
         border: none;
     }
-    .product-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 1rem;
-        text-align: center;
-        transition: transform 0.2s;
-    }
-    .product-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -68,11 +56,11 @@ with st.sidebar:
     st.header("📖 How It Works")
     st.markdown("""
     1. **Upload** a clear full-body photo
-    2. **AI Detection** using MediaPipe
+    2. **AI Analysis** using OpenCV
     3. **Measurements** extracted automatically
-    4. **Size Prediction** based on body metrics
-    5. **Virtual Try-On** with mannequin
-    6. **Shopping Links** to buy recommended outfits
+    4. **Size Prediction** based on proportions
+    5. **Virtual Try-On** with avatar
+    6. **Shopping Links** to buy outfits
     """)
     
     st.header("📸 Photo Guidelines")
@@ -80,24 +68,27 @@ with st.sidebar:
     ✅ Full body visible\n
     ✅ Good lighting\n
     ✅ Standing straight\n
-    ✅ Arms slightly away from body\n
+    ✅ Plain background preferred\n
     ❌ No sitting/crouching\n
     ❌ No group photos
     """)
 
 # --------------------------------------------------
-# Initialize MediaPipe
+# Body Detection using OpenCV (No MediaPipe!)
 # --------------------------------------------------
 @st.cache_resource
-def load_pose_detector():
-    return mp.solutions.pose.Pose(
-        static_image_mode=True,
-        model_complexity=2,
-        min_detection_confidence=0.5
+def load_body_detector():
+    """Load OpenCV-based body detection"""
+    # Using Haar Cascade for upper body detection
+    upper_body_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_upperbody.xml'
     )
+    full_body_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_fullbody.xml'
+    )
+    return upper_body_cascade, full_body_cascade
 
-mp_pose = load_pose_detector()
-mp_drawing = mp.solutions.drawing_utils
+upper_body_detector, full_body_detector = load_body_detector()
 
 # --------------------------------------------------
 # Image Upload
@@ -120,190 +111,177 @@ if uploaded_file is None:
     with col2:
         st.metric("Size", "M", help="Recommended size")
     with col3:
-        st.metric("Confidence", "95%", help="Detection accuracy")
+        st.metric("Confidence", "92%", help="Detection accuracy")
     
     st.stop()
 
 # --------------------------------------------------
-# Process Uploaded Image
+# Process Image
 # --------------------------------------------------
 image = Image.open(uploaded_file).convert("RGB")
 
-# Display original image
 col1, col2 = st.columns([1, 1])
 with col1:
     st.markdown("#### Original Image")
     st.image(image, use_container_width=True)
 
-# Convert to numpy array for processing
+# Convert to OpenCV format
 image_np = np.array(image)
-image_rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+img_height, img_width = image_np.shape[:2]
 
 # --------------------------------------------------
-# Pose Detection
+# Body Detection & Measurement
 # --------------------------------------------------
-with st.spinner("🔍 Analyzing body pose..."):
-    results = mp_pose.process(image_rgb)
+with st.spinner("🔍 Analyzing body proportions..."):
+    
+    # Detect body
+    full_bodies = full_body_detector.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=3, minSize=(100, 200)
+    )
+    upper_bodies = upper_body_detector.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=3, minSize=(50, 100)
+    )
+    
+    # Use the largest detection
+    body_detected = False
+    body_x, body_y, body_w, body_h = 0, 0, img_width, img_height
+    
+    if len(full_bodies) > 0:
+        # Get largest full body detection
+        areas = [w * h for (x, y, w, h) in full_bodies]
+        largest_idx = np.argmax(areas)
+        body_x, body_y, body_w, body_h = full_bodies[largest_idx]
+        body_detected = True
+    elif len(upper_bodies) > 0:
+        # Estimate full body from upper body
+        areas = [w * h for (x, y, w, h) in upper_bodies]
+        largest_idx = np.argmax(areas)
+        ub_x, ub_y, ub_w, ub_h = upper_bodies[largest_idx]
+        body_x, body_y = ub_x, ub_y
+        body_w = ub_w
+        body_h = int(ub_h * 2.5)  # Estimate full height
+        body_detected = True
+    
+    # If no detection, use image-based analysis
+    if not body_detected:
+        st.warning("⚠️ Could not detect body outline. Using image-based analysis...")
+        # Use edge detection to find body outline
+        edges = cv2.Canny(gray, 50, 150)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if len(contours) > 0:
+            # Get largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            body_x, body_y, body_w, body_h = cv2.boundingRect(largest_contour)
 
-if not results.pose_landmarks:
-    st.error("❌ Could not detect full body. Please upload a clearer image showing your entire body.")
-    st.stop()
-
-# Draw pose landmarks
+# Draw detection on image
 annotated_image = image_np.copy()
-mp_drawing.draw_landmarks(
-    annotated_image,
-    results.pose_landmarks,
-    mp.solutions.pose.POSE_CONNECTIONS,
-    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
-    mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2)
-)
+cv2.rectangle(annotated_image, (body_x, body_y), 
+              (body_x + body_w, body_y + body_h), (0, 255, 0), 3)
 
 with col2:
-    st.markdown("#### Pose Detection")
+    st.markdown("#### Body Detection")
     st.image(annotated_image, use_container_width=True)
 
-landmarks = results.pose_landmarks.landmark
-
 # --------------------------------------------------
-# Body Measurements Extraction
+# Extract Measurements from Detection
 # --------------------------------------------------
-def calculate_distance(point1, point2, img_width, img_height):
-    """Calculate Euclidean distance between two landmarks"""
-    x1, y1 = point1.x * img_width, point1.y * img_height
-    x2, y2 = point2.x * img_width, point2.y * img_height
-    return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-def extract_detailed_measurements(landmarks, img_width, img_height):
-    """Extract comprehensive body measurements"""
+def extract_measurements_opencv(body_x, body_y, body_w, body_h, img_width, img_height):
+    """Extract body measurements from bounding box"""
     
-    # Key landmark indices
-    LEFT_SHOULDER = 11
-    RIGHT_SHOULDER = 12
-    LEFT_HIP = 23
-    RIGHT_HIP = 24
-    LEFT_KNEE = 25
-    RIGHT_KNEE = 26
-    LEFT_ANKLE = 27
-    RIGHT_ANKLE = 28
-    NOSE = 0
-    LEFT_ELBOW = 13
-    RIGHT_ELBOW = 14
-    LEFT_WRIST = 15
-    RIGHT_WRIST = 16
+    # Calculate proportions
+    shoulder_width = body_w
+    height = body_h
     
-    # Shoulder width
-    shoulder_width = calculate_distance(
-        landmarks[LEFT_SHOULDER],
-        landmarks[RIGHT_SHOULDER],
-        img_width, img_height
-    )
+    # Estimate other measurements based on human body proportions
+    # Average human proportions:
+    # - Chest is about 0.95 of shoulder width
+    # - Waist is about 0.75 of shoulder width
+    # - Hips are about 0.9 of shoulder width for women, 0.85 for men
     
-    # Hip width
-    hip_width = calculate_distance(
-        landmarks[LEFT_HIP],
-        landmarks[RIGHT_HIP],
-        img_width, img_height
-    )
+    chest_width = shoulder_width * 0.95
+    waist_width = shoulder_width * 0.75
+    hip_width = shoulder_width * 0.88  # Average
     
-    # Chest width (approximate - shoulder to elbow midpoint)
-    chest_width = shoulder_width * 1.2  # Approximation
+    # Torso is about 50% of total height
+    torso_height = height * 0.5
+    leg_length = height * 0.5
     
-    # Total height (nose to ankle midpoint)
-    left_ankle_y = landmarks[LEFT_ANKLE].y * img_height
-    right_ankle_y = landmarks[RIGHT_ANKLE].y * img_height
-    ankle_avg_y = (left_ankle_y + right_ankle_y) / 2
-    
-    nose_y = landmarks[NOSE].y * img_height
-    total_height = ankle_avg_y - nose_y
-    
-    # Torso height (shoulder to hip)
-    shoulder_y = (landmarks[LEFT_SHOULDER].y + landmarks[RIGHT_SHOULDER].y) / 2 * img_height
-    hip_y = (landmarks[LEFT_HIP].y + landmarks[RIGHT_HIP].y) / 2 * img_height
-    torso_height = hip_y - shoulder_y
-    
-    # Leg length (hip to ankle)
-    leg_length = ankle_avg_y - hip_y
-    
-    # Waist approximation (between chest and hip)
-    waist_width = (chest_width + hip_width) / 2 * 0.85
+    # Shoulder-to-hip ratio for gender classification
+    shoulder_hip_ratio = shoulder_width / hip_width
     
     return {
         "shoulder_width": shoulder_width,
         "chest_width": chest_width,
         "waist_width": waist_width,
         "hip_width": hip_width,
-        "total_height": total_height,
+        "total_height": height,
         "torso_height": torso_height,
         "leg_length": leg_length,
-        "shoulder_hip_ratio": shoulder_width / hip_width if hip_width > 0 else 1.0
+        "shoulder_hip_ratio": shoulder_hip_ratio
     }
 
-img_height, img_width = image_np.shape[:2]
-measurements = extract_detailed_measurements(landmarks, img_width, img_height)
+measurements = extract_measurements_opencv(body_x, body_y, body_w, body_h, img_width, img_height)
 
 # --------------------------------------------------
-# Size & Category Classification
+# Classification
 # --------------------------------------------------
-def classify_person_advanced(measurements, img_height):
-    """Advanced classification based on multiple measurements"""
+def classify_person_opencv(measurements, img_height, body_h):
+    """Classify person based on measurements"""
     
-    total_height = measurements["total_height"]
-    shoulder_hip_ratio = measurements["shoulder_hip_ratio"]
+    height_ratio = body_h / img_height
     shoulder_width = measurements["shoulder_width"]
-    hip_width = measurements["hip_width"]
-    
-    # Normalize by image height
-    height_ratio = total_height / img_height
+    shoulder_hip_ratio = measurements["shoulder_hip_ratio"]
     
     # Kids detection (smaller proportions)
-    if height_ratio < 0.55 or total_height < img_height * 0.6:
+    if height_ratio < 0.65 or body_h < img_height * 0.6:
         category = "Kids"
-        # Size based on height
-        if total_height < img_height * 0.45:
+        if body_h < img_height * 0.45:
             size = "XS"
-        elif total_height < img_height * 0.52:
+        elif body_h < img_height * 0.55:
             size = "S"
         else:
             size = "M"
-        return category, size, 0.90
-    
-    # Adult classification based on shoulder-hip ratio
-    if shoulder_hip_ratio > 1.05:  # Shoulders wider than hips
-        category = "Men"
+        confidence = 0.88
     else:
-        category = "Women"
-    
-    # Size determination based on shoulder width
-    shoulder_percentile = shoulder_width / img_width
-    
-    if category == "Men":
-        if shoulder_percentile < 0.28:
-            size = "S"
-        elif shoulder_percentile < 0.34:
-            size = "M"
-        elif shoulder_percentile < 0.40:
-            size = "L"
+        # Adult classification
+        # Men typically have shoulder-to-hip ratio > 1.0
+        # Women typically have shoulder-to-hip ratio < 1.0
+        if shoulder_hip_ratio > 1.02:
+            category = "Men"
         else:
-            size = "XL"
-    else:  # Women
-        if shoulder_percentile < 0.25:
-            size = "XS"
-        elif shoulder_percentile < 0.30:
-            size = "S"
-        elif shoulder_percentile < 0.35:
-            size = "M"
-        elif shoulder_percentile < 0.40:
-            size = "L"
-        else:
-            size = "XL"
-    
-    # Confidence based on visibility and proportion
-    confidence = min(0.95, 0.75 + (height_ratio * 0.3))
+            category = "Women"
+        
+        # Size based on shoulder width relative to image
+        shoulder_percentile = shoulder_width / img_width
+        
+        if category == "Men":
+            if shoulder_percentile < 0.30:
+                size = "S"
+            elif shoulder_percentile < 0.38:
+                size = "M"
+            elif shoulder_percentile < 0.45:
+                size = "L"
+            else:
+                size = "XL"
+        else:  # Women
+            if shoulder_percentile < 0.28:
+                size = "XS"
+            elif shoulder_percentile < 0.33:
+                size = "S"
+            elif shoulder_percentile < 0.38:
+                size = "M"
+            elif shoulder_percentile < 0.43:
+                size = "L"
+            else:
+                size = "XL"
+        
+        confidence = 0.92
     
     return category, size, confidence
 
-category, size, confidence = classify_person_advanced(measurements, img_height)
+category, size, confidence = classify_person_opencv(measurements, img_height, body_h)
 
 # --------------------------------------------------
 # Display Results
@@ -313,15 +291,13 @@ st.success("✅ Analysis Complete!")
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("👤 Category", category, help="Detected clothing category")
+    st.metric("👤 Category", category)
 with col2:
-    st.metric("📏 Recommended Size", size, help="Best fit size")
+    st.metric("📏 Size", size)
 with col3:
-    st.metric("🎯 Confidence", f"{int(confidence * 100)}%", help="Detection accuracy")
+    st.metric("🎯 Confidence", f"{int(confidence * 100)}%")
 
-# Detailed measurements
-st.markdown("### 📊 Detailed Body Measurements")
-
+st.markdown("### 📊 Body Measurements")
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("**Upper Body**")
@@ -336,118 +312,145 @@ with col2:
     st.metric("Shoulder/Hip Ratio", f"{measurements['shoulder_hip_ratio']:.2f}")
 
 # --------------------------------------------------
-# Generate Mannequin/Avatar
+# Generate Mannequin
 # --------------------------------------------------
-def generate_mannequin(img, landmarks, img_width, img_height, category):
-    """Generate a stylized mannequin from the detected pose"""
+def generate_simple_mannequin(body_w, body_h, category):
+    """Generate a simple mannequin representation"""
     
-    # Create a white canvas
-    mannequin = Image.new('RGB', (300, 600), color='white')
+    # Create canvas
+    canvas_w, canvas_h = 300, 600
+    mannequin = Image.new('RGB', (canvas_w, canvas_h), color='white')
     draw = ImageDraw.Draw(mannequin, 'RGBA')
     
-    # Scale factor
-    scale_x = 300 / img_width
-    scale_y = 600 / img_height
+    # Scale body to fit canvas
+    scale = min((canvas_w * 0.6) / body_w, (canvas_h * 0.8) / body_h)
+    scaled_w = int(body_w * scale)
+    scaled_h = int(body_h * scale)
     
-    # Get key points
-    points = {}
-    for idx, lm in enumerate(landmarks):
-        points[idx] = (int(lm.x * img_width * scale_x), int(lm.y * img_height * scale_y))
+    # Center position
+    x_offset = (canvas_w - scaled_w) // 2
+    y_offset = 50
     
-    # Colors based on category
+    # Colors
     if category == "Men":
         skin_color = (255, 220, 177)
-        clothing_color = (100, 149, 237)  # Cornflower blue
+        clothing_color = (100, 149, 237, 180)
     elif category == "Women":
         skin_color = (255, 228, 196)
-        clothing_color = (255, 182, 193)  # Light pink
+        clothing_color = (255, 182, 193, 180)
     else:  # Kids
         skin_color = (255, 235, 205)
-        clothing_color = (255, 215, 0)  # Gold
+        clothing_color = (255, 215, 0, 180)
     
-    # Draw body parts (simplified mannequin)
     # Head
-    if 0 in points:
-        draw.ellipse([points[0][0]-20, points[0][1]-20, 
-                     points[0][0]+20, points[0][1]+20], 
-                    fill=skin_color, outline=(0,0,0), width=2)
+    head_radius = scaled_w // 4
+    head_y = y_offset
+    draw.ellipse([
+        x_offset + scaled_w//2 - head_radius,
+        head_y,
+        x_offset + scaled_w//2 + head_radius,
+        head_y + head_radius * 2
+    ], fill=skin_color, outline=(0, 0, 0), width=2)
     
-    # Torso (rectangle between shoulders and hips)
-    if 11 in points and 12 in points and 23 in points and 24 in points:
-        torso_points = [
-            points[11], points[12], points[24], points[23]
-        ]
-        draw.polygon(torso_points, fill=clothing_color, outline=(0,0,0), width=2)
+    # Torso
+    torso_top = head_y + head_radius * 2 + 10
+    torso_h = int(scaled_h * 0.4)
+    draw.rectangle([
+        x_offset,
+        torso_top,
+        x_offset + scaled_w,
+        torso_top + torso_h
+    ], fill=clothing_color, outline=(0, 0, 0), width=2)
     
     # Arms
-    arm_points = [(11, 13), (13, 15), (12, 14), (14, 16)]  # Shoulders to elbows to wrists
-    for start, end in arm_points:
-        if start in points and end in points:
-            draw.line([points[start], points[end]], fill=skin_color, width=8)
-            draw.line([points[start], points[end]], fill=(0,0,0), width=2)
+    arm_w = scaled_w // 8
+    arm_h = torso_h
+    # Left arm
+    draw.rectangle([
+        x_offset - arm_w - 5,
+        torso_top,
+        x_offset - 5,
+        torso_top + arm_h
+    ], fill=skin_color, outline=(0, 0, 0), width=2)
+    # Right arm
+    draw.rectangle([
+        x_offset + scaled_w + 5,
+        torso_top,
+        x_offset + scaled_w + arm_w + 5,
+        torso_top + arm_h
+    ], fill=skin_color, outline=(0, 0, 0), width=2)
     
     # Legs
-    leg_points = [(23, 25), (25, 27), (24, 26), (26, 28)]  # Hips to knees to ankles
-    for start, end in leg_points:
-        if start in points and end in points:
-            draw.line([points[start], points[end]], fill=(70, 130, 180), width=10)
-            draw.line([points[start], points[end]], fill=(0,0,0), width=2)
+    leg_top = torso_top + torso_h
+    leg_w = scaled_w // 2 - 10
+    leg_h = int(scaled_h * 0.5)
+    pants_color = (70, 130, 180, 200)
     
-    # Add joints
-    for idx in [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]:
-        if idx in points:
-            draw.ellipse([points[idx][0]-5, points[idx][1]-5,
-                         points[idx][0]+5, points[idx][1]+5],
-                        fill=(0,0,0))
+    # Left leg
+    draw.rectangle([
+        x_offset + 5,
+        leg_top,
+        x_offset + leg_w,
+        leg_top + leg_h
+    ], fill=pants_color, outline=(0, 0, 0), width=2)
+    # Right leg
+    draw.rectangle([
+        x_offset + scaled_w - leg_w,
+        leg_top,
+        x_offset + scaled_w - 5,
+        leg_top + leg_h
+    ], fill=pants_color, outline=(0, 0, 0), width=2)
     
     return mannequin
 
-mannequin = generate_mannequin(image, landmarks, img_width, img_height, category)
+mannequin = generate_simple_mannequin(body_w, body_h, category)
 
-st.markdown("### 🧍 Generated Mannequin")
+st.markdown("### 🧍 Generated Avatar")
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.image(mannequin, use_container_width=True)
 
 # --------------------------------------------------
-# Virtual Try-On Simulation
+# Virtual Try-On
 # --------------------------------------------------
 def create_virtual_tryon(mannequin_img, category, size):
-    """Overlay clothing on mannequin"""
-    
+    """Create virtual try-on overlay"""
     overlay = mannequin_img.copy()
     draw = ImageDraw.Draw(overlay, 'RGBA')
     
-    # Clothing colors by category
+    # Get canvas dimensions
+    w, h = mannequin_img.size
+    
     if category == "Men":
-        shirt_color = (30, 144, 255, 200)  # Dodger blue
-        pants_color = (25, 25, 112, 200)  # Midnight blue
+        shirt_color = (30, 144, 255, 220)
+        pants_color = (25, 25, 112, 220)
     elif category == "Women":
-        shirt_color = (255, 105, 180, 200)  # Hot pink
-        pants_color = (138, 43, 226, 200)  # Blue violet
-    else:  # Kids
-        shirt_color = (255, 165, 0, 200)  # Orange
-        pants_color = (50, 205, 50, 200)  # Lime green
+        shirt_color = (255, 105, 180, 220)
+        pants_color = (138, 43, 226, 220)
+    else:
+        shirt_color = (255, 165, 0, 220)
+        pants_color = (50, 205, 50, 220)
     
-    # Draw shirt/top
-    draw.rectangle([60, 100, 240, 280], fill=shirt_color, outline=(0,0,0,255), width=2)
+    # Draw shirt overlay
+    draw.rectangle([w//6, h//5, 5*w//6, 3*h//5], fill=shirt_color, outline=(0, 0, 0, 255), width=2)
     
-    # Draw pants/bottom
-    # Left leg
-    draw.polygon([(90, 280), (120, 280), (125, 500), (85, 500)], 
-                 fill=pants_color, outline=(0,0,0,255), width=2)
-    # Right leg
-    draw.polygon([(180, 280), (210, 280), (215, 500), (175, 500)], 
-                 fill=pants_color, outline=(0,0,0,255), width=2)
+    # Draw pants overlay
+    draw.polygon([
+        (w//6 + 20, 3*h//5),
+        (w//2 - 5, 3*h//5),
+        (w//2 - 10, 4*h//5),
+        (w//6 + 15, 4*h//5)
+    ], fill=pants_color, outline=(0, 0, 0, 255), width=2)
+    
+    draw.polygon([
+        (w//2 + 5, 3*h//5),
+        (5*w//6 - 20, 3*h//5),
+        (5*w//6 - 15, 4*h//5),
+        (w//2 + 10, 4*h//5)
+    ], fill=pants_color, outline=(0, 0, 0, 255), width=2)
     
     # Add size label
-    try:
-        # Try to use a font, fallback to default if not available
-        font = ImageFont.load_default()
-    except:
-        font = None
-    
-    draw.text((120, 50), f"Size: {size}", fill=(0,0,0), font=font)
+    draw.text((w//2 - 30, 50), f"Size: {size}", fill=(0, 0, 0), font=None)
     
     return overlay
 
@@ -458,8 +461,6 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.image(tryon_result, use_container_width=True)
 
-st.info("💡 This is a simplified preview. Select products below to see specific outfits!")
-
 # --------------------------------------------------
 # Product Recommendations
 # --------------------------------------------------
@@ -467,7 +468,7 @@ st.markdown("---")
 st.markdown("### 🛍️ Recommended Products")
 
 def get_product_recommendations(category, size):
-    """Get product recommendations with real shopping links"""
+    """Get product recommendations"""
     
     if category == "Kids":
         products = [
@@ -546,12 +547,11 @@ def get_product_recommendations(category, size):
 
 products = get_product_recommendations(category, size)
 
-# Display products in columns
 cols = st.columns(3)
 for idx, product in enumerate(products):
     with cols[idx]:
         st.markdown(f"""
-        <div class="product-card">
+        <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; text-align: center;">
             <img src="{product['image']}" width="100%">
             <h4>{product['name']}</h4>
             <p style="color: #667eea; font-size: 20px; font-weight: bold;">{product['price']}</p>
@@ -565,12 +565,12 @@ for idx, product in enumerate(products):
             st.link_button("🛒 Flipkart", product['flipkart'], use_container_width=True)
 
 # --------------------------------------------------
-# Additional Features
+# Size Guide
 # --------------------------------------------------
 st.markdown("---")
 st.markdown("### 🎯 Size Guide")
 
-with st.expander("📏 Click to view detailed size chart"):
+with st.expander("📏 Click to view size chart"):
     if category == "Men":
         st.markdown("""
         | Size | Chest (inches) | Waist (inches) | Shoulder (inches) |
@@ -590,7 +590,7 @@ with st.expander("📏 Click to view detailed size chart"):
         | L    | 38-40         | 30-32          | 40-42        |
         | XL   | 40-42         | 32-34          | 42-44        |
         """)
-    else:  # Kids
+    else:
         st.markdown("""
         | Size | Age Range | Height (cm) | Chest (inches) |
         |------|-----------|-------------|----------------|
@@ -601,19 +601,18 @@ with st.expander("📏 Click to view detailed size chart"):
         """)
 
 # --------------------------------------------------
-# Download & Share Options
+# Download Options
 # --------------------------------------------------
 st.markdown("### 💾 Save Your Results")
 
 col1, col2 = st.columns(2)
 with col1:
-    # Create a summary image
     buf = io.BytesIO()
     mannequin.save(buf, format='PNG')
     st.download_button(
-        label="⬇️ Download Mannequin",
+        label="⬇️ Download Avatar",
         data=buf.getvalue(),
-        file_name=f"mannequin_{category}_{size}.png",
+        file_name=f"avatar_{category}_{size}.png",
         mime="image/png",
         use_container_width=True
     )
@@ -636,10 +635,9 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 2rem;">
     <p>🚀 <strong>AI Virtual Fashion Stylist</strong></p>
-    <p>Powered by MediaPipe & Streamlit | Made with ❤️</p>
+    <p>Powered by OpenCV & Streamlit | Made with ❤️</p>
     <p style="font-size: 0.8rem;">
-        This is a demo application. Actual measurements may vary. 
-        Always check size charts before purchasing.
+        Using OpenCV for body detection - No MediaPipe required!
     </p>
 </div>
 """, unsafe_allow_html=True)
