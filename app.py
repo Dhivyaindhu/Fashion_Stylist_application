@@ -12,6 +12,9 @@ This version uses advanced ML models for:
 Requirements:
 pip install streamlit pillow numpy opencv-python mediapipe tensorflow keras
 """
+import importlib.util
+
+st.write("cv2 installed:", importlib.util.find_spec("cv2") is not None)
 
 import streamlit as st
 import numpy as np
@@ -619,3 +622,4 @@ st.markdown('''
     </div>
 </div>
 ''', unsafe_allow_html=True)
+
