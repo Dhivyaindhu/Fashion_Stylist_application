@@ -1,4 +1,3 @@
 -e streamlit
 numpy
 pillow
-scipy
