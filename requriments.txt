@@ -1,9 +1,18 @@
-streamlit>=1.30.0
-numpy>=1.23.0
-pillow>=9.5.0
-opencv-python-headles
-mediapipe>=0.10.9
-tensorflow>=2.13.0
-keras>=2.13.0
-protob
+streamlit==1.54.0
 
+# Core numerical & image handling
+numpy==1.26.4
+pillow==10.4.0
+
+# OpenCV (headless for Streamlit Cloud)
+opencv-python-headless==4.8.0.76
+
+# Pose detection
+mediapipe==0.10.9
+
+# Deep Learning (CPU safe)
+tensorflow-cpu==2.13.0
+keras==2.13.0
+
+# MediaPipe compatibility
+protobuf<4.0.0
