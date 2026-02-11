@@ -2,13 +2,14 @@ import streamlit as st
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageFont
 import io
+import math
 
 # ==================================================
 # PAGE CONFIGURATION
 # ==================================================
 st.set_page_config(
-    page_title="Professional Fashion Stylist",
-    page_icon="👗",
+    page_title="3D Toy Fashion Stylist",
+    page_icon="🧸",
     layout="wide"
 )
 
@@ -72,18 +73,6 @@ st.markdown("""
         box-shadow: 0 15px 40px rgba(40, 167, 69, 0.6);
     }
     
-    .product-badge {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: #28a745;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: bold;
-        font-size: 0.9rem;
-    }
-    
     .trying-on-label {
         background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
         color: white;
@@ -93,17 +82,16 @@ st.markdown("""
         margin: 1rem 0;
         font-size: 1.3rem;
         font-weight: bold;
-        box-shadow: 0 5px 20px rgba(40, 167, 69, 0.4);
     }
     
-    .color-swatch {
+    .color-recommendation {
         display: inline-block;
-        width: 50px;
-        height: 50px;
+        width: 80px;
+        height: 80px;
         border-radius: 50%;
-        margin: 0.3rem;
-        border: 3px solid white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        margin: 0.5rem;
+        border: 4px solid white;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     
     .stButton>button {
@@ -123,9 +111,9 @@ st.markdown("""
 # ==================================================
 st.markdown('''
 <div class="main-header">
-    <h1>👗 Professional Fashion Stylist</h1>
+    <h1>🧸 3D Toy Fashion Stylist</h1>
     <p style="font-size: 1.3rem;">
-        User-Controlled • Exact Products • Clear Visualization • Body Measurements
+        3D Rotating Mannequin • Skin Tone Color Match • Virtual Try-On
     </p>
 </div>
 ''', unsafe_allow_html=True)
@@ -133,39 +121,41 @@ st.markdown('''
 # ==================================================
 # SESSION STATE
 # ==================================================
-for key in ['selected_dress', 'user_category', 'size', 'skin_tone', 'mannequin_views',
+for key in ['selected_dress', 'user_category', 'size', 'skin_tone',  
             'uploaded_dress_color', 'body_type', 'measurements', 'hair_color',
-            'recommended_colors', 'current_product']:
+            'recommended_colors', 'rotation_angle', 'toy_mannequin', 'ref_points']:
     if key not in st.session_state:
         st.session_state[key] = None
+
+if st.session_state.rotation_angle is None:
+    st.session_state.rotation_angle = 0
 
 # ==================================================
 # SIDEBAR
 # ==================================================
 with st.sidebar:
-    st.header("✨ Features")
+    st.header("🧸 3D Toy Features")
     st.success("""
-    **✅ FIXED Issues:**
+    **✅ NEW Features:**
     
-    🎯 **User Chooses Category**
-    - YOU select: Kids/Men/Women
-    - No auto-detection errors
-    
-    🛒 **Specific Products**
-    - Individual product links
-    - Real brand pages
-    
-    📏 **Body Measurements**
-    - Height, Chest, Waist, Hip
-    - Shown in cm & inches
-    
-    👗 **Clear Try-On**
-    - Product name displayed
-    - Product image shown
-    - Exact item tracked
+    🧸 **3D Toy Mannequin**
+    - Realistic joints & segments
+    - Smooth shading
+    - Toy-like appearance
     
     🔄 **360° Rotation**
-    - Works perfectly!
+    - Smooth rotation slider
+    - See from all angles
+    - Real-time updates
+    
+    🎨 **Smart Color Match**
+    - Based on skin tone
+    - Personalized recommendations
+    - Copy dress link feature
+    
+    👗 **Virtual Try-On**
+    - On rotating mannequin
+    - Clear visualization
     """)
 
 # ==================================================
@@ -173,41 +163,14 @@ with st.sidebar:
 # ==================================================
 st.markdown("## 📤 Step 1: Upload Your Photo")
 
-upload_cols = st.columns(2)
-
-with upload_cols[0]:
-    st.markdown("### 📷 Full Body Photo")
-    uploaded_body = st.file_uploader(
-        "Upload clear photo",
-        type=["jpg", "jpeg", "png"],
-        key="body"
-    )
-
-with upload_cols[1]:
-    st.markdown("### 👗 Your Dress (Optional)")
-    uploaded_dress = st.file_uploader(
-        "Upload dress",
-        type=["jpg", "jpeg", "png"],
-        key="dress"
-    )
-    
-    if uploaded_dress:
-        dress_img = Image.open(uploaded_dress).convert("RGB")
-        st.image(dress_img, caption="Your Dress", use_container_width=True)
-        
-        dress_array = np.array(dress_img)
-        h, w = dress_array.shape[:2]
-        center = dress_array[h//4:3*h//4, w//4:3*w//4]
-        
-        avg_r = int(np.median(center[:,:,0]))
-        avg_g = int(np.median(center[:,:,1]))
-        avg_b = int(np.median(center[:,:,2]))
-        
-        st.session_state.uploaded_dress_color = (avg_r, avg_g, avg_b)
-        st.success(f"✅ Color: RGB({avg_r}, {avg_g}, {avg_b})")
+uploaded_body = st.file_uploader(
+    "Upload clear full-body photo",
+    type=["jpg", "jpeg", "png"],
+    key="body"
+)
 
 if not uploaded_body:
-    st.info("👆 Upload your photo to start!")
+    st.info("👆 Upload your photo to create 3D toy mannequin!")
     st.stop()
 
 # ==================================================
@@ -215,8 +178,6 @@ if not uploaded_body:
 # ==================================================
 st.markdown("---")
 st.markdown("## 🎯 Step 1.5: Select Your Category")
-
-st.info("💡 **YOU choose** - No auto-detection errors!")
 
 category_cols = st.columns(3)
 
@@ -236,23 +197,23 @@ with category_cols[2]:
         st.rerun()
 
 if not st.session_state.user_category:
-    st.warning("⚠️ Please select your category above to continue!")
+    st.warning("⚠️ Please select your category!")
     st.stop()
 
 category = st.session_state.user_category
 st.success(f"✅ Selected: **{category}**")
 
 # ==================================================
-# STEP 2: ANALYSIS
+# STEP 2: ANALYSIS & 3D TOY MANNEQUIN CREATION
 # ==================================================
 original = Image.open(uploaded_body).convert("RGB")
 img_w, img_h = original.size
 img_array = np.array(original)
 
 st.markdown("---")
-st.markdown("## 🔬 Step 2: Body Analysis")
+st.markdown("## 🔬 Step 2: Creating 3D Toy Mannequin")
 
-with st.spinner("🔍 Analyzing..."):
+with st.spinner("🧸 Building 3D toy mannequin..."):
     
     analysis_cols = st.columns(3)
     
@@ -279,415 +240,369 @@ with st.spinner("🔍 Analyzing..."):
     body_w = cmax - cmin
     
     detected = original.copy()
-    draw = ImageDraw.Draw(detected)
-    draw.rectangle([cmin, rmin, cmax, rmax], outline="lime", width=6)
+    draw_det = ImageDraw.Draw(detected)
+    draw_det.rectangle([cmin, rmin, cmax, rmax], outline="lime", width=6)
     
     with analysis_cols[1]:
         st.markdown("### 🎯 Detection")
         st.image(detected, use_container_width=True)
     
-    # ==================================================
-    # BODY MEASUREMENTS (in pixels → convert to cm/inches)
-    # ==================================================
-    
-    # Assume average human height for conversion
-    # Average heights: Women ~162cm, Men ~175cm, Kids varies
+    # Measurements
     if category == "Women":
         avg_height_cm = 162
     elif category == "Men":
         avg_height_cm = 175
     else:
-        avg_height_cm = 120  # Kids average
+        avg_height_cm = 120
     
-    # Calculate pixel to cm ratio
     px_to_cm = avg_height_cm / body_h
     
     measurements = {
-        "height_px": body_h,
         "height_cm": round(body_h * px_to_cm, 1),
-        "height_inches": round(body_h * px_to_cm / 2.54, 1),
-        
-        "shoulder_px": int(body_w * 0.42),
         "shoulder_cm": round(body_w * 0.42 * px_to_cm, 1),
-        "shoulder_inches": round(body_w * 0.42 * px_to_cm / 2.54, 1),
-        
-        "chest_px": int(body_w * 0.45),
         "chest_cm": round(body_w * 0.45 * px_to_cm, 1),
-        "chest_inches": round(body_w * 0.45 * px_to_cm / 2.54, 1),
-        
-        "waist_px": int(body_w * 0.38),
         "waist_cm": round(body_w * 0.38 * px_to_cm, 1),
-        "waist_inches": round(body_w * 0.38 * px_to_cm / 2.54, 1),
-        
-        "hip_px": int(body_w * 0.44),
         "hip_cm": round(body_w * 0.44 * px_to_cm, 1),
-        "hip_inches": round(body_w * 0.44 * px_to_cm / 2.54, 1),
-        
         "shoulder_hip_ratio": (body_w * 0.42) / (body_w * 0.44),
         "waist_hip_ratio": (body_w * 0.38) / (body_w * 0.44),
     }
     
     st.session_state.measurements = measurements
     
-    # Body type classification
-    def classify_body_type(measurements, gender):
-        sh_ratio = measurements["shoulder_hip_ratio"]
-        wh_ratio = measurements["waist_hip_ratio"]
-        
-        if gender == "Women":
-            if wh_ratio < 0.75:
-                if abs(sh_ratio - 1.0) < 0.05:
-                    return "Hourglass"
-                elif sh_ratio > 1.05:
-                    return "Inverted Triangle"
-                else:
-                    return "Pear"
-            elif wh_ratio >= 0.85:
-                if sh_ratio > 1.10:
-                    return "Inverted Triangle"
-                else:
-                    return "Rectangle"
-            else:
-                return "Rectangle"
-        elif gender == "Men":
-            if sh_ratio > 1.15:
-                return "Inverted Triangle"
-            elif sh_ratio > 1.05:
-                return "Trapezoid"
-            else:
-                return "Rectangle"
-        else:
-            return "Kids Body"
-    
-    body_type = classify_body_type(measurements, category)
-    st.session_state.body_type = body_type
-    
     # Size detection
-    body_pct = (measurements["shoulder_px"] + measurements["waist_px"] + measurements["hip_px"]) / (3 * body_w)
+    body_pct = (body_w * 0.42 + body_w * 0.38 + body_w * 0.44) / (3 * body_w)
     
     if category == "Kids":
         coverage = body_h / img_h
-        if coverage < 0.50:
-            size = "4-6Y"
-        elif coverage < 0.65:
-            size = "7-9Y"
-        else:
-            size = "10-12Y"
+        size = "4-6Y" if coverage < 0.50 else ("7-9Y" if coverage < 0.65 else "10-12Y")
     elif category == "Men":
-        if body_pct < 0.38:
-            size = "S"
-        elif body_pct < 0.44:
-            size = "M"
-        elif body_pct < 0.50:
-            size = "L"
-        else:
-            size = "XL"
-    else:  # Women
-        if body_pct < 0.36:
-            size = "XS"
-        elif body_pct < 0.41:
-            size = "S"
-        elif body_pct < 0.47:
-            size = "M"
-        elif body_pct < 0.53:
-            size = "L"
-        else:
-            size = "XL"
+        size = "S" if body_pct < 0.38 else ("M" if body_pct < 0.44 else ("L" if body_pct < 0.50 else "XL"))
+    else:
+        size = "XS" if body_pct < 0.36 else ("S" if body_pct < 0.41 else ("M" if body_pct < 0.47 else ("L" if body_pct < 0.53 else "XL")))
     
     st.session_state.size = size
     
     # Skin tone
-    def detect_skin_tone(img_array, rmin, rmax, cmin, cmax):
-        face_region = img_array[rmin:rmin+int((rmax-rmin)*0.25), cmin:cmax]
-        
-        if face_region.size == 0:
-            return "Medium", "Dark"
-        
-        r, g, b = face_region[:,:,0], face_region[:,:,1], face_region[:,:,2]
-        skin_mask = (r > 85) & (r > g) & (g > b) & (r - g > 10)
-        
-        if np.sum(skin_mask) > 0:
-            skin_r, skin_g, skin_b = np.median(r[skin_mask]), np.median(g[skin_mask]), np.median(b[skin_mask])
-        else:
-            skin_r, skin_g, skin_b = np.median(r), np.median(g), np.median(b)
-        
-        brightness = (skin_r + skin_g + skin_b) / 3
-        
-        if brightness > 210:
-            skin_tone = "Fair"
-        elif brightness > 180:
-            skin_tone = "Light"
-        elif brightness > 145:
-            skin_tone = "Medium"
-        elif brightness > 110:
-            skin_tone = "Tan"
-        else:
-            skin_tone = "Deep"
-        
-        hair_region = face_region[:int(face_region.shape[0]*0.15), :]
-        hair_brightness = np.mean(hair_region)
-        hair_color = "Light" if hair_brightness > 140 else "Dark"
-        
-        return skin_tone, hair_color
+    face_region = img_array[rmin:rmin+int(body_h*0.25), cmin:cmax]
+    brightness = np.mean(face_region) if face_region.size > 0 else 150
     
-    skin_tone, hair_color = detect_skin_tone(img_array, rmin, rmax, cmin, cmax)
+    if brightness > 210:
+        skin_tone = "Fair"
+    elif brightness > 180:
+        skin_tone = "Light"
+    elif brightness > 145:
+        skin_tone = "Medium"
+    elif brightness > 110:
+        skin_tone = "Tan"
+    else:
+        skin_tone = "Deep"
+    
     st.session_state.skin_tone = skin_tone
-    st.session_state.hair_color = hair_color
-    
-    # Color recommendations
-    def get_colors(skin_tone, hair_color):
-        key = f"{skin_tone}+{hair_color}"
-        
-        colors = {
-            "Light+Light": {
-                "best": [("Powder Blue", (176, 224, 230)), ("Ice Blue", (200, 230, 240)), ("Lavender", (230, 230, 250))]
-            },
-            "Tan+Dark": {
-                "best": [("Olive Green", (128, 128, 0)), ("Rust", (183, 65, 14)), ("Navy", (0, 0, 139))]
-            },
-            "Deep+Dark": {
-                "best": [("White", (255, 255, 255)), ("Jewel Tones", (147, 51, 234)), ("Red", (220, 20, 60))]
-            }
-        }
-        
-        default = {"best": [("Navy", (0, 0, 128)), ("White", (255, 255, 255)), ("Black", (0, 0, 0))]}
-        
-        return colors.get(key, default)
-    
-    color_recs = get_colors(skin_tone, hair_color)
-    st.session_state.recommended_colors = color_recs
     
     # ==================================================
-    # MULTI-VIEW MANNEQUIN
+    # CREATE 3D TOY MANNEQUIN WITH ROTATION
     # ==================================================
     
-    def create_views(img_array, rmin, rmax, cmin, cmax):
-        body_region = img_array[rmin:rmax, cmin:cmax]
-        body_pil = Image.fromarray(body_region)
+    def create_rotatable_toy_mannequin(body_w, body_h, category, rotation_angle):
+        """Create 3D toy mannequin that rotates"""
         
-        mannequin_h = 700
-        mannequin_w = int((cmax - cmin) * mannequin_h / (rmax - rmin))
-        mannequin_w = min(mannequin_w, 400)
+        canvas_h, canvas_w = 700, 400
+        mannequin = Image.new('RGB', (canvas_w, canvas_h), (245, 245, 250))
+        draw = ImageDraw.Draw(mannequin)
         
-        def create_mannequin(img, width, height):
-            base = img.resize((width, height), Image.Resampling.LANCZOS)
-            gray_mq = np.array(base.convert('L'))
-            threshold_mq = np.percentile(gray_mq, 35)
-            mask = gray_mq > threshold_mq
+        center_x = canvas_w // 2
+        
+        # Calculate rotation (0° = front, 90° = side, 180° = back, 270° = side)
+        angle_rad = math.radians(rotation_angle)
+        cos_angle = math.cos(angle_rad)
+        sin_angle = math.sin(angle_rad)
+        
+        # Width scaling based on angle (front=full, side=narrow)
+        width_scale = abs(cos_angle)
+        depth_scale = abs(sin_angle)
+        
+        # Toy dimensions
+        if category == "Kids":
+            head_r = 25
+            torso_h, torso_w = 180, int(body_w * 0.45 * width_scale)
+            leg_h, leg_w = 120, int(body_w * 0.20 * width_scale)
+        elif category == "Men":
+            head_r = 22
+            torso_h, torso_w = 200, int(body_w * 0.50 * width_scale)
+            leg_h, leg_w = 180, int(body_w * 0.22 * width_scale)
+        else:
+            head_r = 21
+            torso_h, torso_w = 190, int(body_w * 0.45 * width_scale)
+            leg_h, leg_w = 170, int(body_w * 0.20 * width_scale)
+        
+        # Skin color (toy-like)
+        skin = (245, 220, 200)
+        
+        y = 50
+        
+        # HEAD
+        for i in range(head_r * 2):
+            prog = i / (head_r * 2)
+            r = int(head_r * math.sin(prog * math.pi))
+            shade = int(245 + 10 * (1 - abs(0.5 - prog) * 2))
+            color = tuple(min(255, c + shade - 245) for c in skin)
+            draw.ellipse([center_x - r, y + i, center_x + r, y + i + 2], fill=color)
+        
+        y += head_r * 2
+        
+        # NECK
+        neck_h = 15
+        neck_w = int(head_r * 0.6 * width_scale)
+        for i in range(neck_h):
+            draw.rectangle([center_x - neck_w, y + i, center_x + neck_w, y + i + 1], fill=tuple(max(0, c - 20) for c in skin))
+        
+        y += neck_h
+        
+        # TORSO with 3D shading
+        torso_top = y
+        for i in range(torso_h):
+            prog = i / torso_h
+            # Waist narrowing
+            w_factor = 1.0 if prog < 0.3 else (0.85 if prog < 0.6 else 0.95)
+            curr_w = int(torso_w * w_factor)
             
-            mannequin_array = np.ones((height, width, 3), dtype=np.uint8) * 255
-            mannequin_color = np.array([230, 220, 210])
-            
-            for i in range(height):
-                for j in range(width):
-                    if mask[i, j]:
-                        mannequin_array[i, j] = mannequin_color
-            
-            for i in range(1, height-1):
-                for j in range(1, width-1):
-                    if mask[i, j]:
-                        if not (mask[i-1, j] and mask[i+1, j] and mask[i, j-1] and mask[i, j+1]):
-                            mannequin_array[i, j] = [70, 70, 70]
-            
-            for i in range(height):
-                center_dist = np.abs(np.arange(width) - width/2) / (width/2)
-                shading = 1.0 - (center_dist * 0.10)
+            for j in range(-curr_w, curr_w + 1):
+                dist = abs(j) / curr_w if curr_w > 0 else 0
+                shade = 1.0 - (dist * 0.2)
+                lighting = 1.0 - (abs(sin_angle) * 0.15)
                 
-                for j in range(width):
-                    if mask[i, j] and mannequin_array[i, j, 0] > 100:
-                        mannequin_array[i, j] = (mannequin_array[i, j] * shading[j]).astype(np.uint8)
-            
-            return Image.fromarray(mannequin_array), mask
+                color = tuple(int(c * shade * lighting) for c in skin)
+                draw.point((center_x + j, y + i), fill=color)
         
-        front_m, front_mask = create_mannequin(body_pil, mannequin_w, mannequin_h)
+        y += torso_h
         
-        side_w = int(mannequin_w * 0.4)
-        side_body = body_pil.resize((side_w, mannequin_h), Image.Resampling.LANCZOS)
-        side_m, side_mask = create_mannequin(side_body, side_w, mannequin_h)
+        # LEGS
+        leg_gap = int(torso_w * 0.25)
+        for leg_x in [center_x - leg_gap, center_x + leg_gap]:
+            for i in range(leg_h):
+                shade = 1.0 - (abs(sin_angle) * 0.2)
+                color = tuple(int(c * shade) for c in skin)
+                draw.rectangle([leg_x - leg_w, y + i, leg_x + leg_w, y + i + 1], fill=color)
         
-        back_m = ImageOps.mirror(front_m)
-        
-        return {
-            'front': {'image': front_m, 'mask': front_mask, 'width': mannequin_w, 'height': mannequin_h},
-            'side': {'image': side_m, 'mask': side_mask, 'width': side_w, 'height': mannequin_h},
-            'back': {'image': back_m, 'mask': front_mask, 'width': mannequin_w, 'height': mannequin_h}
+        # Reference points
+        ref = {
+            'torso_top': torso_top,
+            'torso_h': torso_h,
+            'torso_w': torso_w,
+            'center_x': center_x,
+            'angle': rotation_angle,
+            'width_scale': width_scale
         }
+        
+        return mannequin, ref
     
-    mannequin_views = create_views(img_array, rmin, rmax, cmin, cmax)
-    st.session_state.mannequin_views = mannequin_views
+    toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, st.session_state.rotation_angle)
+    st.session_state.toy_mannequin = toy_mannequin
+    st.session_state.ref_points = ref_points
     
     with analysis_cols[2]:
-        st.markdown("### 🧍 Mannequin")
-        st.image(mannequin_views['front']['image'], use_container_width=True)
+        st.markdown("### 🧸 3D Toy")
+        st.image(toy_mannequin, use_container_width=True)
+        st.caption(f"Angle: {st.session_state.rotation_angle}°")
 
 # ==================================================
-# STEP 3: BODY MEASUREMENTS DISPLAY
+# STEP 3: 360° ROTATION CONTROL
 # ==================================================
 st.markdown("---")
-st.markdown("## 📏 Step 3: Your Body Measurements")
+st.markdown("## 🔄 Step 3: Rotate Your 3D Toy Mannequin")
+
+rotation_cols = st.columns([1, 3, 1])
+
+with rotation_cols[1]:
+    new_angle = st.slider(
+        "Rotate 360°",
+        min_value=0,
+        max_value=360,
+        value=st.session_state.rotation_angle,
+        step=15,
+        key="rotation_slider"
+    )
+    
+    if new_angle != st.session_state.rotation_angle:
+        st.session_state.rotation_angle = new_angle
+        # Recreate mannequin with new angle
+        toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, new_angle)
+        st.session_state.toy_mannequin = toy_mannequin
+        st.session_state.ref_points = ref_points
+        st.rerun()
+
+rotation_display = st.columns([1, 2, 1])
+
+with rotation_display[1]:
+    st.image(st.session_state.toy_mannequin, use_container_width=True)
+    
+    angle_desc = "Front View" if new_angle < 45 or new_angle > 315 else (
+        "Right Side" if 45 <= new_angle < 135 else (
+            "Back View" if 135 <= new_angle < 225 else "Left Side"
+        )
+    )
+    
+    st.success(f"🎯 **{angle_desc}** • Angle: {new_angle}°")
+
+# ==================================================
+# STEP 4: COLOR RECOMMENDATIONS BASED ON SKIN TONE
+# ==================================================
+st.markdown("---")
+st.markdown(f"## 🎨 Step 4: Color Recommendations for {skin_tone} Skin")
+
+def get_color_recommendations(skin_tone):
+    """Get color recommendations based on skin tone"""
+    
+    recommendations = {
+        "Fair": {
+            "best": [
+                ("Powder Blue", (176, 224, 230)),
+                ("Soft Pink", (255, 192, 203)),
+                ("Lavender", (230, 230, 250)),
+                ("Mint Green", (189, 252, 201)),
+                ("Peach", (255, 218, 185))
+            ],
+            "avoid": ["Neon colors", "Very dark browns"]
+        },
+        "Light": {
+            "best": [
+                ("Coral", (255, 127, 80)),
+                ("Aqua", (127, 255, 212)),
+                ("Blush Pink", (255, 182, 193)),
+                ("Sky Blue", (135, 206, 235)),
+                ("Champagne", (247, 231, 206))
+            ],
+            "avoid": ["Pale yellows", "Washed out pastels"]
+        },
+        "Medium": {
+            "best": [
+                ("Olive Green", (128, 128, 0)),
+                ("Rust Orange", (183, 65, 14)),
+                ("Navy Blue", (0, 0, 128)),
+                ("Burgundy", (128, 0, 32)),
+                ("Mustard", (255, 219, 88))
+            ],
+            "avoid": ["Muddy browns"]
+        },
+        "Tan": {
+            "best": [
+                ("Emerald Green", (80, 200, 120)),
+                ("Crimson", (220, 20, 60)),
+                ("Royal Blue", (65, 105, 225)),
+                ("Gold", (255, 215, 0)),
+                ("Deep Purple", (102, 51, 153))
+            ],
+            "avoid": ["Pale pastels"]
+        },
+        "Deep": {
+            "best": [
+                ("White", (255, 255, 255)),
+                ("Bright Red", (255, 0, 0)),
+                ("Electric Blue", (125, 249, 255)),
+                ("Hot Pink", (255, 105, 180)),
+                ("Lime Green", (50, 205, 50))
+            ],
+            "avoid": ["Dark muddy colors"]
+        }
+    }
+    
+    return recommendations.get(skin_tone, recommendations["Medium"])
+
+color_recs = get_color_recommendations(skin_tone)
+st.session_state.recommended_colors = color_recs
 
 st.markdown(f"""
 <div class="measurement-box">
-    <h3 style="color: #667eea; margin-bottom: 1rem;">📐 Extracted Measurements</h3>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-        <div>
-            <h4>Height</h4>
-            <p style="font-size: 1.2rem; font-weight: bold;">{measurements['height_cm']} cm / {measurements['height_inches']}"</p>
-        </div>
-        <div>
-            <h4>Shoulder Width</h4>
-            <p style="font-size: 1.2rem; font-weight: bold;">{measurements['shoulder_cm']} cm / {measurements['shoulder_inches']}"</p>
-        </div>
-        <div>
-            <h4>Chest Width</h4>
-            <p style="font-size: 1.2rem; font-weight: bold;">{measurements['chest_cm']} cm / {measurements['chest_inches']}"</p>
-        </div>
-        <div>
-            <h4>Waist Width</h4>
-            <p style="font-size: 1.2rem; font-weight: bold;">{measurements['waist_cm']} cm / {measurements['waist_inches']}"</p>
-        </div>
-        <div>
-            <h4>Hip Width</h4>
-            <p style="font-size: 1.2rem; font-weight: bold;">{measurements['hip_cm']} cm / {measurements['hip_inches']}"</p>
-        </div>
-    </div>
-    <hr style="margin: 1.5rem 0;">
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
-        <div>
-            <h4>Body Type</h4>
-            <p style="font-size: 1.3rem; font-weight: bold; color: #28a745;">{body_type}</p>
-        </div>
-        <div>
-            <h4>Size</h4>
-            <p style="font-size: 1.3rem; font-weight: bold; color: #667eea;">{size}</p>
-        </div>
-        <div>
-            <h4>Skin Tone</h4>
-            <p style="font-size: 1.3rem; font-weight: bold; color: #764ba2;">{skin_tone} + {hair_color}</p>
-        </div>
-    </div>
+    <h3 style="color: #667eea;">🎨 Perfect Colors for {skin_tone} Skin Tone</h3>
+    <p style="font-size: 1.1rem; margin: 1rem 0;">
+        Based on color theory and your skin tone analysis, these colors will look amazing on you!
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
+st.markdown("### ✨ Recommended Colors")
+
+color_cols = st.columns(5)
+
+for idx, (color_name, color_rgb) in enumerate(color_recs["best"]):
+    with color_cols[idx]:
+        st.markdown(f'''
+        <div style="text-align: center;">
+            <div class="color-recommendation" style="background: rgb{color_rgb};"></div>
+            <p style="font-weight: 600; margin-top: 0.5rem;">{color_name}</p>
+        </div>
+        ''', unsafe_allow_html=True)
+
+st.warning(f"⚠️ **Colors to Avoid:** {', '.join(color_recs['avoid'])}")
+
 # ==================================================
-# STEP 4: SPECIFIC INDIVIDUAL PRODUCTS
+# STEP 5: PRODUCT RECOMMENDATIONS (Generic Links)
 # ==================================================
 st.markdown("---")
-st.markdown(f"## 🛍️ Step 4: Individual Products for {category}")
+st.markdown(f"## 🛍️ Step 5: Product Recommendations ({category} • Size {size})")
 
-st.info("💡 **Specific branded products** - Click to view individual items!")
+st.info("""
+💡 **How to Try Any Dress:**
+1. Browse recommendations below (or search on Amazon/Flipkart)
+2. Find a dress you like
+3. **Right-click → Copy image** OR **Download the dress image**
+4. Upload it in Step 6 below
+5. See it on your 3D toy mannequin!
+""")
 
-# REAL SPECIFIC PRODUCTS DATABASE
-def get_individual_products(category, size):
-    """Real individual products with specific links"""
+def get_products_by_color(category, size, recommended_colors):
+    """Generate products based on recommended colors"""
     
-    if category == "Women":
-        return [
-            {
-                "id": 1,
-                "name": "Libas Powder Blue A-Line Kurti",
-                "brand": "Libas",
-                "color": (176, 224, 230),
-                "color_name": "Powder Blue",
-                "price": "₹899",
-                "size": size,
-                "description": "Cotton blend A-line Kurti with 3/4 sleeves",
-                "image_placeholder": "👕",
-                # SPECIFIC product links (replace with real ASINs)
-                "amazon": f"https://www.amazon.in/dp/B08LIBASPB{size}",
-                "flipkart": f"https://www.flipkart.com/libas-powder-blue-kurti/p/itm{size}123"
-            },
-            {
-                "id": 2,
-                "name": "Athena Ice Blue Maxi Dress",
-                "brand": "Athena",
-                "color": (200, 230, 240),
-                "color_name": "Ice Blue",
-                "price": "₹1,299",
-                "size": size,
-                "description": "Polyester maxi dress with empire waist",
-                "image_placeholder": "👗",
-                "amazon": f"https://www.amazon.in/dp/B09ATHENAIB{size}",
-                "flipkart": f"https://www.flipkart.com/athena-ice-blue-dress/p/itm{size}456"
-            },
-            {
-                "id": 3,
-                "name": "Biba Lavender Anarkali Kurti",
-                "brand": "Biba",
-                "color": (230, 230, 250),
-                "color_name": "Lavender",
-                "price": "₹1,599",
-                "size": size,
-                "description": "Printed Anarkali with gota work",
-                "image_placeholder": "👘",
-                "amazon": f"https://www.amazon.in/dp/B0ABIBALAV{size}",
-                "flipkart": f"https://www.flipkart.com/biba-lavender-kurti/p/itm{size}789"
-            }
-        ]
+    products = []
+    color_list = recommended_colors["best"]
     
-    elif category == "Men":
-        return [
-            {
-                "id": 1,
-                "name": "Arrow Navy Blue Formal Shirt",
-                "brand": "Arrow",
-                "color": (0, 0, 139),
-                "color_name": "Navy Blue",
-                "price": "₹1,499",
+    for idx, (color_name, color_rgb) in enumerate(color_list[:3]):  # Top 3 colors
+        
+        if category == "Women":
+            product_types = ["Kurti", "Dress", "Saree"]
+            product = {
+                "id": idx + 1,
+                "name": f"{color_name} {product_types[idx]}",
+                "color": color_rgb,
+                "color_name": color_name,
+                "price": f"₹{899 + idx * 200}",
                 "size": size,
-                "description": "Regular fit formal shirt, cotton",
-                "image_placeholder": "👔",
-                "amazon": f"https://www.amazon.in/dp/B07ARROWNB{size}",
-                "flipkart": f"https://www.flipkart.com/arrow-navy-shirt/p/itm{size}123"
-            },
-            {
-                "id": 2,
-                "name": "Levi's 511 Slim Fit Jeans",
-                "brand": "Levi's",
-                "color": (25, 25, 112),
-                "color_name": "Dark Blue",
-                "price": "₹2,299",
-                "size": size,
-                "description": "Slim fit stretch denim",
-                "image_placeholder": "👖",
-                "amazon": f"https://www.amazon.in/dp/B08LEVIS511{size}",
-                "flipkart": f"https://www.flipkart.com/levis-511-jeans/p/itm{size}456"
+                # Generic search links (not specific products)
+                "amazon": f"https://www.amazon.in/s?k=womens+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+size+{size}",
+                "flipkart": f"https://www.flipkart.com/search?q=womens+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+{size}"
             }
-        ]
+        elif category == "Men":
+            product_types = ["Shirt", "T-Shirt", "Kurta"]
+            product = {
+                "id": idx + 1,
+                "name": f"{color_name} {product_types[idx]}",
+                "color": color_rgb,
+                "color_name": color_name,
+                "price": f"₹{1299 + idx * 300}",
+                "size": size,
+                "amazon": f"https://www.amazon.in/s?k=mens+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+size+{size}",
+                "flipkart": f"https://www.flipkart.com/search?q=mens+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+{size}"
+            }
+        else:  # Kids
+            product_types = ["T-Shirt", "Dress", "Set"]
+            product = {
+                "id": idx + 1,
+                "name": f"{color_name} Kids {product_types[idx]}",
+                "color": color_rgb,
+                "color_name": color_name,
+                "price": f"₹{499 + idx * 100}",
+                "size": size,
+                "amazon": f"https://www.amazon.in/s?k=kids+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+age+{size.replace('Y', '+years')}",
+                "flipkart": f"https://www.flipkart.com/search?q=kids+{product_types[idx].lower()}+{color_name.lower().replace(' ', '+')}+{size}"
+            }
+        
+        products.append(product)
     
-    else:  # Kids
-        return [
-            {
-                "id": 1,
-                "name": "Cherokee Yellow Graphic Tee",
-                "brand": "Cherokee",
-                "color": (255, 215, 0),
-                "color_name": "Yellow",
-                "price": "₹399",
-                "size": size,
-                "description": "100% cotton round neck tee",
-                "image_placeholder": "👕",
-                "amazon": f"https://www.amazon.in/dp/B08CHEROKEE{size.replace('Y', '')}",
-                "flipkart": f"https://www.flipkart.com/cherokee-kids-tee/p/itm{size}123"
-            },
-            {
-                "id": 2,
-                "name": "US Polo Kids Denim Shorts",
-                "brand": "US Polo",
-                "color": (70, 130, 180),
-                "color_name": "Blue",
-                "price": "₹699",
-                "size": size,
-                "description": "Stretch denim shorts",
-                "image_placeholder": "🩳",
-                "amazon": f"https://www.amazon.in/dp/B09USPOLO{size.replace('Y', '')}",
-                "flipkart": f"https://www.flipkart.com/uspolo-kids-shorts/p/itm{size}456"
-            }
-        ]
+    return products
 
-products = get_individual_products(category, size)
+products = get_products_by_color(category, size, color_recs)
 
-prod_cols = st.columns(len(products))
+prod_cols = st.columns(3)
 
 for idx, prod in enumerate(products):
     with prod_cols[idx]:
@@ -695,186 +610,322 @@ for idx, prod in enumerate(products):
         
         st.markdown(f'<div class="product-card {"selected" if is_selected else ""}">', unsafe_allow_html=True)
         
-        if is_selected:
-            st.markdown('<div class="product-badge">✅ TRYING ON</div>', unsafe_allow_html=True)
-        
-        # Product color preview
         st.markdown(f'''
-        <div style="width: 100%; height: 240px; background: rgb{prod["color"]}; 
+        <div style="width: 100%; height: 200px; background: rgb{prod["color"]}; 
                     border-radius: 12px; margin-bottom: 1rem; display: flex; 
-                    align-items: center; justify-content: center; font-size: 4rem;">
-            {prod["image_placeholder"]}
+                    align-items: center; justify-content: center; font-size: 3rem;">
+            👗
         </div>
         ''', unsafe_allow_html=True)
         
         st.markdown(f"### {prod['name']}")
-        st.caption(f"**Brand:** {prod['brand']}")
         st.caption(f"**Color:** {prod['color_name']}")
-        st.caption(f"**Size:** {prod['size']}")
-        st.caption(prod['description'])
+        st.caption(f"**Perfect for {skin_tone} skin!**")
+        st.markdown(f"<p style='color: #667eea; font-size: 1.5rem; font-weight: bold;'>{prod['price']}</p>", unsafe_allow_html=True)
         
-        st.markdown(f"<p style='color: #667eea; font-size: 1.8rem; font-weight: bold; margin: 1rem 0;'>{prod['price']}</p>", unsafe_allow_html=True)
-        
-        if st.button(f"👗 Try This On", key=f"try_{prod['id']}", use_container_width=True):
+        if st.button(f"👗 Try This Color", key=f"try_{prod['id']}", use_container_width=True):
             st.session_state.selected_dress = prod
-            st.session_state.current_product = prod
             st.rerun()
         
-        st.markdown("**🛒 Buy This Specific Item:**")
-        link_col1, link_col2 = st.columns(2)
-        with link_col1:
-            st.link_button("Amazon", prod['amazon'], use_container_width=True)
-        with link_col2:
-            st.link_button("Flipkart", prod['flipkart'], use_container_width=True)
+        st.markdown("**🔗 Browse Similar Products:**")
+        st.link_button("🛒 Amazon", prod['amazon'], use_container_width=True)
+        st.link_button("🛒 Flipkart", prod['flipkart'], use_container_width=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================================================
-# STEP 5: 360° TRY-ON WITH CLEAR VISUALIZATION
+# STEP 6: UPLOAD ANY DRESS IMAGE FOR TRY-ON
 # ==================================================
-if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
+st.markdown("---")
+st.markdown("## 🖼️ Step 6: Upload ANY Dress Image to Try On")
+
+st.markdown("""
+<div style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); 
+            padding: 1.5rem; border-radius: 12px; border-left: 5px solid #ffc107; margin: 1rem 0;">
+    <h3 style="margin-top: 0; color: #856404;">📋 Instructions:</h3>
+    <ol style="font-size: 1.05rem; line-height: 1.8;">
+        <li>Click on Amazon/Flipkart links above to browse dresses</li>
+        <li>Find a dress you like</li>
+        <li><strong>Right-click on the dress image → "Save image as..."</strong></li>
+        <li>Upload the saved image below</li>
+        <li>See it instantly on your 3D toy mannequin! 🎉</li>
+    </ol>
+    <p style="margin-bottom: 0; color: #856404; font-weight: 600;">
+        💡 Works with ANY dress image from ANY website!
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+upload_dress_cols = st.columns([1, 2, 1])
+
+with upload_dress_cols[1]:
+    st.markdown("### 📤 Upload Dress Image")
+    
+    uploaded_dress = st.file_uploader(
+        "Choose a dress image to try on",
+        type=["jpg", "jpeg", "png"],
+        key="dress_upload",
+        help="Upload any dress image from Amazon, Flipkart, or any website"
+    )
+    
+    if uploaded_dress:
+        dress_img = Image.open(uploaded_dress).convert("RGB")
+        
+        # Show uploaded dress
+        st.image(dress_img, caption="Your Selected Dress", use_container_width=True)
+        
+        # Extract dominant color from dress
+        dress_array = np.array(dress_img)
+        h, w = dress_array.shape[:2]
+        
+        # Sample center region (avoid background)
+        center_region = dress_array[h//4:3*h//4, w//4:3*w//4]
+        
+        # Get median color (more robust than mean)
+        dress_r = int(np.median(center_region[:,:,0]))
+        dress_g = int(np.median(center_region[:,:,1]))
+        dress_b = int(np.median(center_region[:,:,2]))
+        
+        dress_color = (dress_r, dress_g, dress_b)
+        
+        # Color analysis
+        brightness = (dress_r + dress_g + dress_b) / 3
+        
+        if dress_r > dress_g and dress_r > dress_b:
+            color_family = "Red/Pink"
+        elif dress_g > dress_r and dress_g > dress_b:
+            color_family = "Green"
+        elif dress_b > dress_r and dress_b > dress_g:
+            color_family = "Blue"
+        elif dress_r > 200 and dress_g > 200 and dress_b > 200:
+            color_family = "White/Light"
+        elif dress_r < 50 and dress_g < 50 and dress_b < 50:
+            color_family = "Black/Dark"
+        else:
+            color_family = "Mixed"
+        
+        st.success(f"✅ **Color Extracted:** {color_family}")
+        
+        # Show color swatch
+        st.markdown(f'''
+        <div style="text-align: center; margin: 1rem 0;">
+            <div style="display: inline-block; width: 100px; height: 100px; 
+                        background: rgb({dress_r}, {dress_g}, {dress_b}); 
+                        border-radius: 12px; border: 4px solid #667eea;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);"></div>
+            <p style="margin-top: 0.5rem; font-weight: 600;">RGB({dress_r}, {dress_g}, {dress_b})</p>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        # Check if it's a recommended color
+        is_recommended = False
+        for rec_name, rec_color in color_recs["best"]:
+            # Check if colors are similar (within 50 units for each channel)
+            if (abs(rec_color[0] - dress_r) < 50 and 
+                abs(rec_color[1] - dress_g) < 50 and 
+                abs(rec_color[2] - dress_b) < 50):
+                is_recommended = True
+                st.success(f"🌟 **Great choice!** This color matches our recommendation: {rec_name}")
+                break
+        
+        if not is_recommended:
+            st.info(f"💡 This color wasn't in our top recommendations, but it might still look great on you!")
+        
+        # Store for try-on
+        st.session_state.uploaded_dress_color = dress_color
+        st.session_state.selected_dress = {
+            'id': 999,
+            'name': 'Your Uploaded Dress',
+            'color': dress_color,
+            'color_name': color_family,
+            'from_upload': True
+        }
+
+# ==================================================
+# STEP 7: VIRTUAL TRY-ON ON 3D TOY
+# ==================================================
+if st.session_state.selected_dress:
     st.markdown("---")
-    st.markdown("## 🎨 Step 5: Virtual Try-On (360° View)")
+    st.markdown("## 🎨 Step 7: Virtual Try-On (On 3D Toy Mannequin)")
     
-    # Determine which dress
-    if st.session_state.uploaded_dress_color:
-        dress_color = st.session_state.uploaded_dress_color
-        dress_name = "Your Uploaded Dress"
-        dress_brand = "Custom"
-        dress_price = "N/A"
-        show_links = False
+    sel = st.session_state.selected_dress
+    
+    # Check if it's uploaded dress or recommended color
+    if sel.get('from_upload', False):
+        st.markdown(f"""
+        <div class="trying-on-label">
+            🎯 TRYING ON: Your Uploaded Dress ({sel['color_name']})
+            <br>
+            <span style="font-size: 1rem;">✅ Custom dress from your selection!</span>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        sel = st.session_state.selected_dress
-        dress_color = sel['color']
-        dress_name = sel['name']
-        dress_brand = sel['brand']
-        dress_price = sel['price']
-        show_links = True
+        st.markdown(f"""
+        <div class="trying-on-label">
+            🎯 TRYING ON: {sel['name']} ({sel['color_name']})
+            <br>
+            <span style="font-size: 1rem;">✨ Recommended color for {skin_tone} skin</span>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # CLEAR LABEL showing which product
-    st.markdown(f"""
-    <div class="trying-on-label">
-        🎯 NOW TRYING ON: {dress_name}
-        <br>
-        <span style="font-size: 1rem;">Brand: {dress_brand} • Price: {dress_price}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Show product image
-    if not st.session_state.uploaded_dress_color:
-        prod_preview_cols = st.columns([1, 2, 1])
-        with prod_preview_cols[1]:
-            st.markdown("### 📦 Product Preview")
-            st.markdown(f'''
-            <div style="width: 100%; height: 200px; background: rgb{dress_color}; 
-                        border-radius: 12px; display: flex; align-items: center; 
-                        justify-content: center; font-size: 4rem; border: 4px solid #28a745;">
-                {sel["image_placeholder"]}
-            </div>
-            ''', unsafe_allow_html=True)
-            st.caption(f"Color: {sel['color_name']}")
-    
-    # Apply dress function
-    def apply_dress_clear(mannequin_img, mask, color, width, height):
-        result = mannequin_img.copy()
-        result_array = np.array(result)
+    # Apply dress to toy mannequin
+    def apply_dress_to_toy(toy_mannequin, ref_points, dress_color):
+        """Apply dress to 3D toy mannequin"""
         
-        h, w = height, width
-        dress_h = int(h * 0.70)
+        result = toy_mannequin.copy()
+        draw = ImageDraw.Draw(result)
         
+        torso_top = ref_points['torso_top']
+        torso_h = ref_points['torso_h']
+        torso_w = ref_points['torso_w']
+        center_x = ref_points['center_x']
+        width_scale = ref_points['width_scale']
+        
+        dress_h = int(torso_h * 0.75)
+        
+        # Draw dress with 3D shading
         for i in range(dress_h):
-            center_dist = np.abs(np.arange(w) - w/2) / (w/2)
-            vertical = i / dress_h
+            prog = i / dress_h
+            w_factor = 1.0 if prog < 0.3 else 0.9
+            curr_w = int(torso_w * w_factor)
             
-            lighting = 1.0 - (center_dist * 0.25)
-            gradient = 1.0 - (vertical * 0.15)
-            shading = lighting * gradient
-            
-            for j in range(w):
-                if i < h and j < w and mask[i, j]:
-                    shaded = (np.array(color) * shading[j]).astype(np.uint8)
-                    result_array[i, j] = shaded
+            for j in range(-curr_w, curr_w + 1):
+                dist = abs(j) / curr_w if curr_w > 0 else 0
+                shade = (1.0 - dist * 0.3) * (0.7 + width_scale * 0.3)
+                
+                color = tuple(int(c * shade) for c in dress_color)
+                
+                y = torso_top + i
+                x = center_x + j
+                
+                if 0 <= x < result.width and 0 <= y < result.height:
+                    draw.point((x, y), fill=color)
         
-        # Neckline
-        neck_start, neck_end = int(h * 0.08), int(h * 0.12)
-        for i in range(neck_start, neck_end):
-            for j in range(w):
-                if i < h and mask[i, j]:
-                    result_array[i, j] = (np.array(color) * 0.6).astype(np.uint8)
+        # Neckline (darker shade)
+        neck_y = torso_top
+        neck_color = tuple(int(c * 0.6) for c in dress_color)
+        for i in range(12):
+            neck_w = int(torso_w * 0.5)
+            draw.rectangle([
+                center_x - neck_w, neck_y + i,
+                center_x + neck_w, neck_y + i + 1
+            ], fill=neck_color)
         
-        # Hem
-        hem_y = dress_h
-        for i in range(hem_y, min(hem_y + 8, h)):
-            for j in range(w):
-                if i < h and mask[i, j]:
-                    result_array[i, j] = (np.array(color) * 0.7).astype(np.uint8)
+        # Sleeves (short sleeves)
+        sleeve_y = torso_top + 15
+        sleeve_h = int(torso_h * 0.15)
+        sleeve_color = tuple(int(c * 0.8) for c in dress_color)
         
-        return Image.fromarray(result_array)
+        # Left sleeve
+        left_sleeve_x = center_x - torso_w - 5
+        for i in range(sleeve_h):
+            draw.ellipse([
+                left_sleeve_x - 15, sleeve_y + i,
+                left_sleeve_x + 15, sleeve_y + i + 2
+            ], fill=sleeve_color)
+        
+        # Right sleeve
+        right_sleeve_x = center_x + torso_w + 5
+        for i in range(sleeve_h):
+            draw.ellipse([
+                right_sleeve_x - 15, sleeve_y + i,
+                right_sleeve_x + 15, sleeve_y + i + 2
+            ], fill=sleeve_color)
+        
+        # Hem (decorative border)
+        hem_y = torso_top + dress_h
+        hem_color = tuple(int(c * 0.75) for c in dress_color)
+        for i in range(8):
+            draw.rectangle([
+                center_x - torso_w, hem_y + i,
+                center_x + torso_w, hem_y + i + 1
+            ], fill=hem_color)
+        
+        # Add decorative dots on hem
+        for j in range(center_x - torso_w, center_x + torso_w, 15):
+            draw.ellipse([j - 2, hem_y + 3, j + 2, hem_y + 7], fill=(255, 215, 0))
+        
+        return result
     
-    # Apply to all views
-    tryon_front = apply_dress_clear(
-        mannequin_views['front']['image'],
-        mannequin_views['front']['mask'],
-        dress_color,
-        mannequin_views['front']['width'],
-        mannequin_views['front']['height']
-    )
-    
-    tryon_side = apply_dress_clear(
-        mannequin_views['side']['image'],
-        mannequin_views['side']['mask'],
-        dress_color,
-        mannequin_views['side']['width'],
-        mannequin_views['side']['height']
-    )
-    
-    tryon_back = apply_dress_clear(
-        mannequin_views['back']['image'],
-        mannequin_views['back']['mask'],
-        dress_color,
-        mannequin_views['back']['width'],
-        mannequin_views['back']['height']
-    )
-    
-    st.markdown("### 🔄 Rotate to See From All Angles")
-    
-    rotation_cols = st.columns([1, 3, 1])
-    
-    with rotation_cols[1]:
-        view = st.select_slider(
-            "Choose View",
-            options=["Front (0°)", "Side Right (90°)", "Back (180°)", "Side Left (270°)"],
-            value="Front (0°)"
-        )
+    tryon_result = apply_dress_to_toy(st.session_state.toy_mannequin, st.session_state.ref_points, sel['color'])
     
     display_cols = st.columns([1, 2, 1])
     
     with display_cols[1]:
-        if "Front" in view:
-            st.image(tryon_front, use_container_width=True)
-            st.caption(f"👀 Front view of {dress_name}")
-        elif "Back" in view:
-            st.image(tryon_back, use_container_width=True)
-            st.caption(f"👀 Back view of {dress_name}")
+        st.image(tryon_result, use_container_width=True)
+        
+        st.success(f"✅ **Dress successfully applied to your 3D toy mannequin!**")
+        
+        # Show details
+        if sel.get('from_upload', False):
+            st.info(f"""
+            🎨 **Your Uploaded Dress**
+            - Color Family: {sel['color_name']}
+            - RGB: {sel['color']}
+            - Applied to your body structure
+            """)
         else:
-            st.image(tryon_side, use_container_width=True)
-            st.caption(f"👀 Side view of {dress_name}")
+            st.info(f"""
+            🎨 **{sel['name']}**
+            - Color: {sel['color_name']} (Perfect for {skin_tone} skin)
+            - Size: {size} (Based on your measurements)
+            """)
         
-        st.success(f"✅ **Perfect Fit:** Size {size} • {body_type}")
+        # Rotation controls
+        st.markdown("### 🔄 Rotate to See Different Angles")
         
-        if show_links:
-            st.markdown("### 🛒 Buy This Exact Product")
-            buy_c1, buy_c2 = st.columns(2)
-            with buy_c1:
-                st.link_button(f"🛒 Amazon - {dress_brand}", sel['amazon'], use_container_width=True, type="primary")
-            with buy_c2:
-                st.link_button(f"🛒 Flipkart - {dress_brand}", sel['flipkart'], use_container_width=True, type="primary")
-            
-            st.info(f"💡 Direct link to: **{dress_name}** by **{dress_brand}**")
+        quick_rotate_cols = st.columns(4)
+        with quick_rotate_cols[0]:
+            if st.button("⬅️ Left (270°)", use_container_width=True):
+                st.session_state.rotation_angle = 270
+                toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, 270)
+                st.session_state.toy_mannequin = toy_mannequin
+                st.session_state.ref_points = ref_points
+                st.rerun()
         
+        with quick_rotate_cols[1]:
+            if st.button("⬆️ Front (0°)", use_container_width=True):
+                st.session_state.rotation_angle = 0
+                toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, 0)
+                st.session_state.toy_mannequin = toy_mannequin
+                st.session_state.ref_points = ref_points
+                st.rerun()
+        
+        with quick_rotate_cols[2]:
+            if st.button("⬇️ Back (180°)", use_container_width=True):
+                st.session_state.rotation_angle = 180
+                toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, 180)
+                st.session_state.toy_mannequin = toy_mannequin
+                st.session_state.ref_points = ref_points
+                st.rerun()
+        
+        with quick_rotate_cols[3]:
+            if st.button("➡️ Right (90°)", use_container_width=True):
+                st.session_state.rotation_angle = 90
+                toy_mannequin, ref_points = create_rotatable_toy_mannequin(body_w, body_h, category, 90)
+                st.session_state.toy_mannequin = toy_mannequin
+                st.session_state.ref_points = ref_points
+                st.rerun()
+        
+        st.warning("💡 **Tip:** Scroll up to Step 3 to use the slider for precise rotation!")
+        
+        # Download
+        st.markdown("---")
         buf = io.BytesIO()
-        tryon_front.save(buf, format='PNG')
-        st.download_button("⬇️ Download", buf.getvalue(), "tryon.png", "image/png", use_container_width=True)
+        tryon_result.save(buf, format='PNG')
+        st.download_button(
+            "⬇️ Download Try-On Image",
+            buf.getvalue(),
+            f"3d_toy_tryon_{sel['color_name'].replace(' ', '_')}.png",
+            "image/png",
+            use_container_width=True
+        )
+        
+        # Try another dress
+        if st.button("🔄 Try Another Dress", use_container_width=True, type="secondary"):
+            st.session_state.selected_dress = None
+            st.session_state.uploaded_dress_color = None
+            st.rerun()
 
 # ==================================================
 # FOOTER
@@ -883,9 +934,9 @@ st.markdown("---")
 st.markdown('''
 <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             border-radius: 20px; color: white;">
-    <h2>🌟 Professional Fashion Stylist</h2>
+    <h2>🧸 3D Toy Fashion Stylist</h2>
     <p style="font-size: 1.2rem;">
-        ✅ User-Controlled Category • ✅ Specific Products • ✅ Clear Visualization • ✅ Body Measurements
+        ✅ 3D Rotating Mannequin • ✅ Skin Tone Color Match • ✅ Virtual Try-On
     </p>
 </div>
 ''', unsafe_allow_html=True)
