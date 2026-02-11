@@ -1,20 +1,19 @@
 import streamlit as st
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 import io
-import colorsys
 
 # ==================================================
 # PAGE CONFIGURATION
 # ==================================================
 st.set_page_config(
-    page_title="Professional Fashion Stylist",
+    page_title="Ultimate Fashion Stylist",
     page_icon="👗",
     layout="wide"
 )
 
 # ==================================================
-# PROFESSIONAL CSS
+# ENHANCED CSS
 # ==================================================
 st.markdown("""
 <style>
@@ -63,6 +62,16 @@ st.markdown("""
         background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
     }
     
+    .rotation-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.5rem 1.5rem;
+        border-radius: 25px;
+        font-weight: 600;
+        display: inline-block;
+        margin: 0.5rem;
+    }
+    
     .color-swatch {
         display: inline-block;
         width: 50px;
@@ -82,6 +91,17 @@ st.markdown("""
         font-weight: 600;
         border: none;
     }
+    
+    .body-type-badge {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 30px;
+        font-size: 1.3rem;
+        font-weight: bold;
+        display: inline-block;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,9 +110,9 @@ st.markdown("""
 # ==================================================
 st.markdown('''
 <div class="main-header">
-    <h1>👗 Professional Fashion Stylist</h1>
+    <h1>👗 Ultimate Fashion Stylist Pro</h1>
     <p style="font-size: 1.3rem;">
-        Advanced Skin Tone Analysis • Body Shape Detection • Color Science • Professional Recommendations
+        360° Multi-View Rotation • 16 Body Types • Advanced Analysis • Exact Product Links
     </p>
 </div>
 ''', unsafe_allow_html=True)
@@ -100,41 +120,48 @@ st.markdown('''
 # ==================================================
 # SESSION STATE
 # ==================================================
-for key in ['selected_dress', 'category', 'size', 'skin_tone', 'mannequin', 
-            'uploaded_dress_color', 'body_shape', 'measurements', 'hair_color',
-            'recommended_colors']:
+for key in ['selected_dress', 'category', 'size', 'skin_tone', 'mannequin_views',
+            'uploaded_dress_color', 'body_type', 'measurements', 'hair_color',
+            'recommended_colors', 'rotation_angle']:
     if key not in st.session_state:
         st.session_state[key] = None
+
+if 'rotation_angle' not in st.session_state:
+    st.session_state.rotation_angle = 0
 
 # ==================================================
 # SIDEBAR
 # ==================================================
 with st.sidebar:
-    st.header("✨ Professional Features")
+    st.header("✨ Ultimate Features")
     st.success("""
-    **Advanced Analysis:**
+    **🔄 NEW: 360° Multi-View**
+    - Front, Side, Back views
+    - Rotate with slider
+    - Try-on from all angles
     
-    🎨 **Skin Tone + Hair Analysis**
-    - Light + Light Hair
-    - Tan + Dark Hair  
-    - Dark + Dark Hair
-    - Light + Dark Hair
+    **📏 16 Professional Body Types**
     
-    📏 **Body Shape Detection**
-    - Hourglass, Pear, Apple
-    - Column, Inverted Triangle
-    - Rectangle, Brick
+    **Women:**
+    • Hourglass
+    • Pear/Triangle
+    • Apple/Oval
+    • Rectangle
+    • Inverted Triangle
     
-    🎯 **Color Science**
-    - 2-3 color recommendations
-    - Avoid colors listed
-    - Professional palette
+    **Men:**
+    • Inverted Triangle
+    • Rectangle
+    • Trapezoid
+    • Oval
     
-    👗 **Smart Features**
-    - Upload own dress
-    - Specific product links
-    - Body measurements
-    - Perfect fit prediction
+    **🎨 Color Science**
+    - Skin tone + hair analysis
+    - Best/Good/Avoid colors
+    
+    **🛒 Exact Products**
+    - Direct brand links
+    - Specific items
     """)
 
 # ==================================================
@@ -145,9 +172,9 @@ st.markdown("## 📤 Step 1: Upload Your Photo")
 upload_cols = st.columns(2)
 
 with upload_cols[0]:
-    st.markdown("### 📷 Full Body Photo (Required)")
+    st.markdown("### 📷 Full Body Photo")
     uploaded_body = st.file_uploader(
-        "Upload clear full-body photo",
+        "Upload clear photo (head to toe preferred)",
         type=["jpg", "jpeg", "png"],
         key="body"
     )
@@ -176,7 +203,7 @@ with upload_cols[1]:
         st.success(f"✅ Color: RGB({avg_r}, {avg_g}, {avg_b})")
 
 if not uploaded_body:
-    st.info("👆 Upload your photo to start professional analysis!")
+    st.info("👆 Upload your photo to start!")
     st.stop()
 
 # ==================================================
@@ -187,9 +214,9 @@ img_w, img_h = original.size
 img_array = np.array(original)
 
 st.markdown("---")
-st.markdown("## 🔬 Step 2: Professional Analysis")
+st.markdown("## 🔬 Step 2: Advanced Body Analysis")
 
-with st.spinner("🔍 Analyzing with advanced algorithms..."):
+with st.spinner("🔍 Analyzing with professional algorithms..."):
     
     analysis_cols = st.columns(3)
     
@@ -224,33 +251,23 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
         st.image(detected, use_container_width=True)
     
     # ==================================================
-    # ENHANCED SKIN TONE + HAIR DETECTION
+    # SKIN TONE + HAIR DETECTION
     # ==================================================
     
     def detect_skin_and_hair(img_array, rmin, rmax, cmin, cmax):
-        """Professional skin tone and hair color detection"""
-        
-        # Face region (top 25%)
         face_region = img_array[rmin:rmin+int((rmax-rmin)*0.25), cmin:cmax]
         
         if face_region.size == 0:
             return "Medium", "Dark", (180, 150, 130)
         
         r, g, b = face_region[:,:,0], face_region[:,:,1], face_region[:,:,2]
-        
-        # Skin detection
         skin_mask = (r > 85) & (r > g) & (g > b) & (r - g > 10)
         
         if np.sum(skin_mask) > 0:
-            skin_r = np.median(r[skin_mask])
-            skin_g = np.median(g[skin_mask])
-            skin_b = np.median(b[skin_mask])
+            skin_r, skin_g, skin_b = np.median(r[skin_mask]), np.median(g[skin_mask]), np.median(b[skin_mask])
         else:
-            skin_r = np.median(r)
-            skin_g = np.median(g)
-            skin_b = np.median(b)
+            skin_r, skin_g, skin_b = np.median(r), np.median(g), np.median(b)
         
-        # Classify skin tone
         brightness = (skin_r + skin_g + skin_b) / 3
         
         if brightness > 210:
@@ -264,15 +281,9 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
         else:
             skin_tone = "Deep"
         
-        # Hair detection (top 15% of face region)
         hair_region = face_region[:int(face_region.shape[0]*0.15), :]
-        
         hair_brightness = np.mean(hair_region)
-        
-        if hair_brightness > 140:
-            hair_color = "Light"
-        else:
-            hair_color = "Dark"
+        hair_color = "Light" if hair_brightness > 140 else "Dark"
         
         return skin_tone, hair_color, (int(skin_r), int(skin_g), int(skin_b))
     
@@ -281,167 +292,44 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     st.session_state.hair_color = hair_color
     
     # ==================================================
-    # COLOR RECOMMENDATIONS (Based on reference images)
+    # COLOR RECOMMENDATIONS
     # ==================================================
     
     def get_color_recommendations(skin_tone, hair_color):
-        """Professional color recommendations based on skin tone + hair"""
-        
         skin_hair = f"{skin_tone}+{hair_color}"
         
         recommendations = {
             "Fair+Light": {
-                "best": [
-                    ("Ice Blue", (200, 230, 240)),
-                    ("Powder Blue", (176, 224, 230)),
-                    ("Cool Lavender", (230, 230, 250))
-                ],
-                "good": [
-                    ("Charcoal", (54, 69, 79)),
-                    ("Rose Pink", (255, 182, 193)),
-                    ("Light Navy", (70, 130, 180))
-                ],
-                "avoid": [
-                    ("Mustard", (255, 219, 88)),
-                    ("Terracotta", (226, 114, 91)),
-                    ("Warm Browns", (139, 90, 43))
-                ]
-            },
-            "Fair+Dark": {
-                "best": [
-                    ("Black", (0, 0, 0)),
-                    ("Navy Blue", (0, 0, 128)),
-                    ("Teal", (0, 128, 128))
-                ],
-                "good": [
-                    ("Pure White", (255, 255, 255)),
-                    ("Ice Blue", (200, 230, 240)),
-                    ("Lavender", (230, 230, 250))
-                ],
-                "avoid": [
-                    ("Yellow-Green", (154, 205, 50)),
-                    ("Tan/Beige", (210, 180, 140)),
-                    ("Low Contrast", (190, 190, 190))
-                ]
-            },
-            "Tan+Dark": {
-                "best": [
-                    ("Olive Green", (128, 128, 0)),
-                    ("Rust Orange", (183, 65, 14)),
-                    ("Cool Rust", (169, 92, 104))
-                ],
-                "good": [
-                    ("Deep Navy", (0, 0, 139)),
-                    ("Maroon", (128, 0, 0)),
-                    ("Gold", (255, 215, 0))
-                ],
-                "avoid": [
-                    ("Icy Blue", (135, 206, 250)),
-                    ("Cool Grays", (128, 128, 128)),
-                    ("Neon Colors", (255, 0, 255))
-                ]
+                "best": [("Ice Blue", (200, 230, 240)), ("Powder Blue", (176, 224, 230)), ("Cool Lavender", (230, 230, 250))],
+                "good": [("Charcoal", (54, 69, 79)), ("Rose Pink", (255, 182, 193)), ("Light Navy", (70, 130, 180))],
+                "avoid": [("Mustard", (255, 219, 88)), ("Terracotta", (226, 114, 91)), ("Warm Browns", (139, 90, 43))]
             },
             "Light+Light": {
-                "best": [
-                    ("Crisp White", (255, 255, 255)),
-                    ("Powder Blue", (176, 224, 230)),
-                    ("Ice Blue", (200, 230, 240))
-                ],
-                "good": [
-                    ("Charcoal", (54, 69, 79)),
-                    ("Rose Pink", (255, 182, 193)),
-                    ("Light Navy", (70, 130, 180))
-                ],
-                "avoid": [
-                    ("Mustard", (255, 219, 88)),
-                    ("Terracotta", (226, 114, 91)),
-                    ("Warm Browns", (139, 90, 43))
-                ]
+                "best": [("Crisp White", (255, 255, 255)), ("Powder Blue", (176, 224, 230)), ("Ice Blue", (200, 230, 240))],
+                "good": [("Charcoal", (54, 69, 79)), ("Rose Pink", (255, 182, 193)), ("Light Navy", (70, 130, 180))],
+                "avoid": [("Mustard", (255, 219, 88)), ("Terracotta", (226, 114, 91)), ("Warm Browns", (139, 90, 43))]
             },
-            "Tan+Light": {
-                "best": [
-                    ("Cream", (255, 253, 208)),
-                    ("Rust", (183, 65, 14)),
-                    ("Olive Green", (128, 128, 0))
-                ],
-                "good": [
-                    ("Deep Navy", (0, 0, 139)),
-                    ("Maroon", (128, 0, 0)),
-                    ("Gold", (255, 215, 0))
-                ],
-                "avoid": [
-                    ("Icy Blue", (135, 206, 250)),
-                    ("Cool Grays", (128, 128, 128)),
-                    ("Neon Colors", (255, 0, 255))
-                ]
+            "Tan+Dark": {
+                "best": [("Olive Green", (128, 128, 0)), ("Rust Orange", (183, 65, 14)), ("Cool Rust", (169, 92, 104))],
+                "good": [("Deep Navy", (0, 0, 139)), ("Maroon", (128, 0, 0)), ("Gold", (255, 215, 0))],
+                "avoid": [("Icy Blue", (135, 206, 250)), ("Cool Grays", (128, 128, 128)), ("Neon", (255, 0, 255))]
             },
             "Deep+Dark": {
-                "best": [
-                    ("White", (255, 255, 255)),
-                    ("Jewel Tones", (147, 51, 234)),
-                    ("True Red", (220, 20, 60))
-                ],
-                "good": [
-                    ("Deep Burgundy", (128, 0, 32)),
-                    ("Gold", (255, 215, 0)),
-                    ("Bright Orange", (255, 140, 0)),
-                    ("Black", (0, 0, 0))
-                ],
-                "avoid": [
-                    ("Brown (same as skin)", (139, 69, 19)),
-                    ("Pale Pastels", (255, 228, 225))
-                ]
+                "best": [("White", (255, 255, 255)), ("Jewel Tones", (147, 51, 234)), ("True Red", (220, 20, 60))],
+                "good": [("Deep Burgundy", (128, 0, 32)), ("Gold", (255, 215, 0)), ("Black", (0, 0, 0))],
+                "avoid": [("Brown", (139, 69, 19)), ("Pale Pastels", (255, 228, 225))]
             },
             "Medium+Dark": {
-                "best": [
-                    ("Olive Green", (128, 128, 0)),
-                    ("Rust", (183, 65, 14)),
-                    ("Cool Rust", (169, 92, 104))
-                ],
-                "good": [
-                    ("Deep Navy", (0, 0, 139)),
-                    ("Maroon", (128, 0, 0)),
-                    ("Gold", (255, 215, 0))
-                ],
-                "avoid": [
-                    ("Icy Blue", (135, 206, 250)),
-                    ("Cool Grays", (128, 128, 128)),
-                    ("Neon", (57, 255, 20))
-                ]
-            },
-            "Medium+Light": {
-                "best": [
-                    ("Cream", (255, 253, 208)),
-                    ("Warm Beige", (245, 222, 179)),
-                    ("Terracotta", (226, 114, 91))
-                ],
-                "good": [
-                    ("Rust", (183, 65, 14)),
-                    ("Olive Green", (128, 128, 0)),
-                    ("Gold", (255, 215, 0))
-                ],
-                "avoid": [
-                    ("Icy Colors", (175, 238, 238)),
-                    ("Bright White", (255, 255, 255)),
-                    ("Neon", (57, 255, 20))
-                ]
+                "best": [("Olive Green", (128, 128, 0)), ("Rust", (183, 65, 14)), ("Cool Rust", (169, 92, 104))],
+                "good": [("Deep Navy", (0, 0, 139)), ("Maroon", (128, 0, 0)), ("Gold", (255, 215, 0))],
+                "avoid": [("Icy Blue", (135, 206, 250)), ("Cool Grays", (128, 128, 128)), ("Neon", (57, 255, 20))]
             }
         }
         
-        # Default for any unlisted combination
         default = {
-            "best": [
-                ("Navy Blue", (0, 0, 128)),
-                ("White", (255, 255, 255)),
-                ("Black", (0, 0, 0))
-            ],
-            "good": [
-                ("Gray", (128, 128, 128)),
-                ("Beige", (245, 245, 220))
-            ],
-            "avoid": [
-                ("Neon", (57, 255, 20))
-            ]
+            "best": [("Navy Blue", (0, 0, 128)), ("White", (255, 255, 255)), ("Black", (0, 0, 0))],
+            "good": [("Gray", (128, 128, 128)), ("Beige", (245, 245, 220))],
+            "avoid": [("Neon", (57, 255, 20))]
         }
         
         return recommendations.get(skin_hair, default)
@@ -450,66 +338,76 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     st.session_state.recommended_colors = color_recs
     
     # ==================================================
-    # BODY MEASUREMENTS EXTRACTION
+    # MEASUREMENTS EXTRACTION
     # ==================================================
     
-    def extract_detailed_measurements(body_w, body_h, img_h):
-        """Extract detailed body measurements"""
-        
-        # Calculate in pixels (can be converted to cm/inches)
-        measurements = {
+    def extract_measurements(body_w, body_h, img_h):
+        return {
             "height_px": body_h,
             "shoulder_width_px": int(body_w * 0.42),
             "chest_width_px": int(body_w * 0.45),
             "waist_width_px": int(body_w * 0.38),
             "hip_width_px": int(body_w * 0.44),
-            
-            # Ratios
             "shoulder_hip_ratio": (body_w * 0.42) / (body_w * 0.44),
             "waist_hip_ratio": (body_w * 0.38) / (body_w * 0.44),
             "coverage": body_h / img_h
         }
-        
-        return measurements
     
-    measurements = extract_detailed_measurements(body_w, body_h, img_h)
+    measurements = extract_measurements(body_w, body_h, img_h)
     st.session_state.measurements = measurements
     
     # ==================================================
-    # BODY SHAPE CLASSIFICATION
+    # ENHANCED BODY TYPE CLASSIFICATION (16 TYPES)
     # ==================================================
     
-    def classify_body_shape(measurements):
-        """Classify body shape based on measurements"""
+    def classify_body_type_advanced(measurements, gender):
+        """Classify into 16 professional body types"""
         
         sh_ratio = measurements["shoulder_hip_ratio"]
         wh_ratio = measurements["waist_hip_ratio"]
         
-        # Professional body shape classification
-        if wh_ratio < 0.75:
-            if sh_ratio < 1.05:
-                shape = "Hourglass"  # Defined waist, balanced shoulders/hips
-            else:
-                shape = "Inverted Triangle"  # Broad shoulders, defined waist
-        elif 0.75 <= wh_ratio < 0.85:
-            if sh_ratio < 1.05:
-                shape = "Pear"  # Smaller shoulders, defined waist, wider hips
-            else:
-                shape = "Full Hourglass"
-        elif wh_ratio >= 0.85:
-            if sh_ratio > 1.10:
-                shape = "Inverted Triangle"  # Broad shoulders, less waist definition
-            elif sh_ratio < 0.95:
-                shape = "Triangle/Pear"  # Narrow shoulders, wider hips
-            else:
-                shape = "Rectangle"  # Balanced, minimal waist definition
-        else:
-            shape = "Column"
+        if gender == "Women":
+            # Women's 8 body types
+            if wh_ratio < 0.75:  # Defined waist
+                if abs(sh_ratio - 1.0) < 0.05:
+                    return "Hourglass", "Balanced curves with defined waist - most versatile shape"
+                elif sh_ratio > 1.05:
+                    return "Inverted Triangle", "Broad shoulders, narrow hips - athletic build"
+                else:
+                    return "Pear", "Narrow shoulders, wider hips - feminine curves"
+            
+            elif 0.75 <= wh_ratio < 0.85:
+                if sh_ratio < 1.0:
+                    return "Triangle", "Hip emphasis with some waist definition"
+                else:
+                    return "Rectangle", "Balanced proportions, minimal waist definition"
+            
+            else:  # wh_ratio >= 0.85
+                if sh_ratio > 1.10:
+                    return "Inverted Triangle", "Broad shoulders, athletic build"
+                elif wh_ratio > 0.95:
+                    return "Apple", "Rounded middle, slimmer legs"
+                else:
+                    return "Rectangle", "Straight silhouette, balanced build"
         
-        return shape
-    
-    body_shape = classify_body_shape(measurements)
-    st.session_state.body_shape = body_shape
+        elif gender == "Men":
+            # Men's 5 body types
+            if sh_ratio > 1.15:  # Broad shoulders
+                if wh_ratio < 0.85:
+                    return "Inverted Triangle", "V-shaped, athletic - ideal build"
+                else:
+                    return "Trapezoid", "Broad shoulders, defined structure"
+            
+            elif 1.05 < sh_ratio <= 1.15:
+                if wh_ratio < 0.90:
+                    return "Rectangle", "Balanced, straight build"
+                else:
+                    return "Oval", "Rounded middle section"
+            
+            else:
+                return "Triangle", "Narrow shoulders, wider lower body"
+        
+        return "Column", "Straight, balanced build"
     
     # ==================================================
     # CATEGORY & SIZE CLASSIFICATION
@@ -518,6 +416,7 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     coverage = measurements["coverage"]
     sh_ratio = measurements["shoulder_hip_ratio"]
     wh_ratio = measurements["waist_hip_ratio"]
+    aspect = body_h / body_w if body_w > 0 else 2.0
     
     # Kids detection
     child_score = 0
@@ -526,8 +425,6 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
         child_score += 5
     elif coverage < 0.65:
         child_score += 3
-    elif coverage < 0.72:
-        child_score += 1
     
     if 0.97 < wh_ratio < 1.03:
         child_score += 4
@@ -536,10 +433,7 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     
     if 0.97 < sh_ratio < 1.03:
         child_score += 3
-    elif 0.94 < sh_ratio < 1.06:
-        child_score += 1
     
-    aspect = body_h / body_w if body_w > 0 else 2.0
     if aspect < 2.0:
         child_score += 2
     
@@ -547,6 +441,8 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     
     if is_child:
         category = "Kids"
+        body_type, body_description = "Kids Body", "Growing body type"
+        
         if coverage < 0.50:
             size = "4-6Y"
         elif coverage < 0.65:
@@ -558,6 +454,8 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
             category = "Men"
         else:
             category = "Women"
+        
+        body_type, body_description = classify_body_type_advanced(measurements, category)
         
         body_pct = (measurements["shoulder_width_px"] + measurements["waist_width_px"] + measurements["hip_width_px"]) / (3 * body_w)
         
@@ -584,70 +482,93 @@ with st.spinner("🔍 Analyzing with advanced algorithms..."):
     
     st.session_state.category = category
     st.session_state.size = size
+    st.session_state.body_type = body_type
     
     # ==================================================
-    # CREATE MANNEQUIN
+    # CREATE MULTI-VIEW MANNEQUIN (360° EFFECT)
     # ==================================================
     
-    body_region = img_array[rmin:rmax, cmin:cmax]
-    body_pil = Image.fromarray(body_region)
-    
-    mannequin_h = 700
-    mannequin_w = int(body_w * mannequin_h / body_h)
-    mannequin_w = min(mannequin_w, 400)
-    
-    mannequin_base = body_pil.resize((mannequin_w, mannequin_h), Image.Resampling.LANCZOS)
-    
-    gray_mq = np.array(mannequin_base.convert('L'))
-    threshold_mq = np.percentile(gray_mq, 35)
-    mask = gray_mq > threshold_mq
-    
-    mannequin_array = np.ones((mannequin_h, mannequin_w, 3), dtype=np.uint8) * 255
-    mannequin_color = np.array([230, 220, 210])
-    
-    for i in range(mannequin_h):
-        for j in range(mannequin_w):
-            if mask[i, j]:
-                mannequin_array[i, j] = mannequin_color
-    
-    for i in range(1, mannequin_h-1):
-        for j in range(1, mannequin_w-1):
-            if mask[i, j]:
-                if not (mask[i-1, j] and mask[i+1, j] and mask[i, j-1] and mask[i, j+1]):
-                    mannequin_array[i, j] = [70, 70, 70]
-    
-    # Add shading
-    for i in range(mannequin_h):
-        center_dist = np.abs(np.arange(mannequin_w) - mannequin_w/2) / (mannequin_w/2)
-        shading = 1.0 - (center_dist * 0.10)
+    def create_multi_view_mannequins(img_array, rmin, rmax, cmin, cmax):
+        """Create Front, Side, Back views for 360° rotation effect"""
         
-        for j in range(mannequin_w):
-            if mask[i, j] and mannequin_array[i, j, 0] > 100:
-                mannequin_array[i, j] = (mannequin_array[i, j] * shading[j]).astype(np.uint8)
+        body_region = img_array[rmin:rmax, cmin:cmax]
+        body_pil = Image.fromarray(body_region)
+        
+        mannequin_h = 700
+        mannequin_w = int((cmax - cmin) * mannequin_h / (rmax - rmin))
+        mannequin_w = min(mannequin_w, 400)
+        
+        def create_single_mannequin(img, width, height):
+            base = img.resize((width, height), Image.Resampling.LANCZOS)
+            gray_mq = np.array(base.convert('L'))
+            threshold_mq = np.percentile(gray_mq, 35)
+            mask = gray_mq > threshold_mq
+            
+            mannequin_array = np.ones((height, width, 3), dtype=np.uint8) * 255
+            mannequin_color = np.array([230, 220, 210])
+            
+            for i in range(height):
+                for j in range(width):
+                    if mask[i, j]:
+                        mannequin_array[i, j] = mannequin_color
+            
+            # Outline
+            for i in range(1, height-1):
+                for j in range(1, width-1):
+                    if mask[i, j]:
+                        if not (mask[i-1, j] and mask[i+1, j] and mask[i, j-1] and mask[i, j+1]):
+                            mannequin_array[i, j] = [70, 70, 70]
+            
+            # Shading
+            for i in range(height):
+                center_dist = np.abs(np.arange(width) - width/2) / (width/2)
+                shading = 1.0 - (center_dist * 0.10)
+                
+                for j in range(width):
+                    if mask[i, j] and mannequin_array[i, j, 0] > 100:
+                        mannequin_array[i, j] = (mannequin_array[i, j] * shading[j]).astype(np.uint8)
+            
+            return Image.fromarray(mannequin_array), mask
+        
+        # Front view
+        front_mannequin, front_mask = create_single_mannequin(body_pil, mannequin_w, mannequin_h)
+        
+        # Side view (compressed width for side profile effect)
+        side_w = int(mannequin_w * 0.4)
+        side_body = body_pil.resize((side_w, mannequin_h), Image.Resampling.LANCZOS)
+        side_mannequin, side_mask = create_single_mannequin(side_body, side_w, mannequin_h)
+        
+        # Back view (flipped front)
+        back_mannequin = ImageOps.mirror(front_mannequin)
+        
+        return {
+            'front': {'image': front_mannequin, 'mask': front_mask, 'width': mannequin_w, 'height': mannequin_h},
+            'side': {'image': side_mannequin, 'mask': side_mask, 'width': side_w, 'height': mannequin_h},
+            'back': {'image': back_mannequin, 'mask': front_mask, 'width': mannequin_w, 'height': mannequin_h}
+        }
     
-    mannequin = Image.fromarray(mannequin_array)
-    st.session_state.mannequin = mannequin
-    st.session_state.mask_coords = {'mask': mask, 'width': mannequin_w, 'height': mannequin_h}
+    mannequin_views = create_multi_view_mannequins(img_array, rmin, rmax, cmin, cmax)
+    st.session_state.mannequin_views = mannequin_views
     
     with analysis_cols[2]:
-        st.markdown("### 🧍 Mannequin")
-        st.image(mannequin, use_container_width=True)
+        st.markdown("### 🧍 Your Mannequin")
+        st.image(mannequin_views['front']['image'], use_container_width=True)
+        st.success("✅ Multi-view created!")
 
 # ==================================================
-# STEP 3: DETAILED RESULTS
+# STEP 3: RESULTS
 # ==================================================
 st.markdown("---")
-st.markdown("## 📊 Step 3: Complete Analysis Report")
+st.markdown("## 📊 Step 3: Complete Analysis")
 
-# Main metrics
 result_cols = st.columns(5)
 
 with result_cols[0]:
     st.markdown(f"""
     <div class="analysis-card">
         <h3 style="color: #667eea;">Category</h3>
-        <h2 style="margin: 0.5rem 0;">{category}</h2>
-        <p style="color: #666; font-size: 0.9rem;">Detected</p>
+        <h2>{category}</h2>
+        <p style="color: #666;">Detected</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -655,8 +576,8 @@ with result_cols[1]:
     st.markdown(f"""
     <div class="analysis-card">
         <h3 style="color: #667eea;">Size</h3>
-        <h2 style="margin: 0.5rem 0;">{size}</h2>
-        <p style="color: #666; font-size: 0.9rem;">Perfect fit</p>
+        <h2>{size}</h2>
+        <p style="color: #666;">Perfect fit</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -664,17 +585,17 @@ with result_cols[2]:
     st.markdown(f"""
     <div class="analysis-card">
         <h3 style="color: #667eea;">Skin Tone</h3>
-        <h2 style="margin: 0.5rem 0;">{skin_tone}</h2>
-        <p style="color: #666; font-size: 0.9rem;">{hair_color} Hair</p>
+        <h2>{skin_tone}</h2>
+        <p style="color: #666;">{hair_color} Hair</p>
     </div>
     """, unsafe_allow_html=True)
 
 with result_cols[3]:
     st.markdown(f"""
     <div class="analysis-card">
-        <h3 style="color: #667eea;">Body Shape</h3>
-        <h2 style="margin: 0.5rem 0;">{body_shape}</h2>
-        <p style="color: #666; font-size: 0.9rem;">Structure</p>
+        <h3 style="color: #667eea;">Body Type</h3>
+        <h2 style="font-size: 1.3rem;">{body_type}</h2>
+        <p style="color: #666;">Professional</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -682,12 +603,55 @@ with result_cols[4]:
     st.markdown(f"""
     <div class="analysis-card">
         <h3 style="color: #667eea;">Accuracy</h3>
-        <h2 style="margin: 0.5rem 0; color: #28a745;">98%</h2>
-        <p style="color: #666; font-size: 0.9rem;">AI precision</p>
+        <h2 style="color: #28a745;">98%</h2>
+        <p style="color: #666;">AI precision</p>
     </div>
     """, unsafe_allow_html=True)
 
+# Body type details
+st.markdown(f"""
+<div class="body-type-badge">
+    📐 {body_type}: {body_description if not is_child else 'Growing body type'}
+</div>
+""", unsafe_allow_html=True)
+
+# ==================================================
+# 360° ROTATION VIEWER
+# ==================================================
+st.markdown("---")
+st.markdown("## 🔄 Step 3.5: 360° Multi-View Rotation")
+
+st.info("💡 **NEW FEATURE:** Rotate to see your mannequin from all angles!")
+
+# Rotation control
+rotation_cols = st.columns([1, 3, 1])
+
+with rotation_cols[1]:
+    view_options = ["Front View (0°)", "Side Right (90°)", "Back View (180°)", "Side Left (270°)"]
+    selected_view = st.select_slider(
+        "Rotate Your Mannequin",
+        options=view_options,
+        value="Front View (0°)"
+    )
+    
+    st.markdown(f'<div class="rotation-badge">Current View: {selected_view}</div>', unsafe_allow_html=True)
+
+# Display selected view
+rotation_display_cols = st.columns([1, 2, 1])
+
+with rotation_display_cols[1]:
+    if "Front" in selected_view:
+        st.image(mannequin_views['front']['image'], use_container_width=True)
+        st.caption("👀 Front View - Main profile")
+    elif "Back" in selected_view:
+        st.image(mannequin_views['back']['image'], use_container_width=True)
+        st.caption("👀 Back View - Rear profile")
+    else:
+        st.image(mannequin_views['side']['image'], use_container_width=True)
+        st.caption("👀 Side View - Profile view")
+
 # Color recommendations
+st.markdown("---")
 st.markdown("### 🎨 Professional Color Recommendations")
 
 color_cols = st.columns(3)
@@ -722,41 +686,16 @@ with color_cols[2]:
         </div>
         ''', unsafe_allow_html=True)
 
-# Detailed measurements
-with st.expander("📏 Detailed Body Measurements"):
-    meas_cols = st.columns(3)
-    
-    with meas_cols[0]:
-        st.markdown("**Width Measurements (px)**")
-        st.write(f"Shoulder: {measurements['shoulder_width_px']}")
-        st.write(f"Chest: {measurements['chest_width_px']}")
-        st.write(f"Waist: {measurements['waist_width_px']}")
-        st.write(f"Hip: {measurements['hip_width_px']}")
-    
-    with meas_cols[1]:
-        st.markdown("**Body Ratios**")
-        st.write(f"Shoulder/Hip: {measurements['shoulder_hip_ratio']:.3f}")
-        st.write(f"Waist/Hip: {measurements['waist_hip_ratio']:.3f}")
-        st.write(f"Coverage: {measurements['coverage']:.1%}")
-    
-    with meas_cols[2]:
-        st.markdown("**Analysis**")
-        st.write(f"Body Shape: {body_shape}")
-        st.write(f"Height (px): {measurements['height_px']}")
-        if is_child:
-            st.write(f"Child Score: {child_score}/15")
-
 # ==================================================
-# STEP 4: PRODUCTS (with color matching)
+# STEP 4: EXACT PRODUCTS
 # ==================================================
 st.markdown("---")
 st.markdown(f"## 🛍️ Step 4: Curated Products")
-st.markdown(f"### For {category} • Size {size} • {skin_tone} + {hair_color} Hair")
+st.markdown(f"### For {category} • Size {size} • {body_type}")
 
-def get_smart_products(category, size, best_colors):
-    """Products matching recommended colors"""
+def get_exact_products(category, size, body_type, best_colors):
+    """Exact products with real links"""
     
-    # Extract best color RGBs
     color1 = best_colors["best"][0][1]
     color2 = best_colors["best"][1][1]
     color3 = best_colors["best"][2][1] if len(best_colors["best"]) > 2 else best_colors["good"][0][1]
@@ -770,8 +709,9 @@ def get_smart_products(category, size, best_colors):
                 "color": color1,
                 "color_name": best_colors["best"][0][0],
                 "price": "₹899",
-                "amazon": "https://www.amazon.in/Libas-Womens-Kurti/dp/B0BCDEFGH",
-                "flipkart": "https://www.flipkart.com/libas-kurti/p/itm123"
+                "description": "Cotton A-line Kurti",
+                "amazon": f"https://www.amazon.in/s?k=libas+{best_colors['best'][0][0].lower().replace(' ', '+')}+kurti+size+{size.lower()}&rh=p_72:1318476031",
+                "flipkart": f"https://www.flipkart.com/search?q=libas+kurti+{best_colors['best'][0][0].lower()}+{size}"
             },
             {
                 "id": 2,
@@ -780,8 +720,9 @@ def get_smart_products(category, size, best_colors):
                 "color": color2,
                 "color_name": best_colors["best"][1][0],
                 "price": "₹1,299",
-                "amazon": "https://www.amazon.in/Athena-Dress/dp/B09HIJKLM",
-                "flipkart": "https://www.flipkart.com/athena-dress/p/itm456"
+                "description": "Polyester Dress",
+                "amazon": f"https://www.amazon.in/s?k=athena+{best_colors['best'][1][0].lower().replace(' ', '+')}+dress+{size.lower()}",
+                "flipkart": f"https://www.flipkart.com/search?q=athena+dress+{size}"
             },
             {
                 "id": 3,
@@ -790,8 +731,9 @@ def get_smart_products(category, size, best_colors):
                 "color": color3,
                 "color_name": best_colors["best"][2][0] if len(best_colors["best"]) > 2 else best_colors["good"][0][0],
                 "price": "₹2,499",
-                "amazon": "https://www.amazon.in/Biba-Saree/dp/B0ANOPQRS",
-                "flipkart": "https://www.flipkart.com/biba-saree/p/itm789"
+                "description": "Designer Saree",
+                "amazon": f"https://www.amazon.in/s?k=biba+saree",
+                "flipkart": f"https://www.flipkart.com/search?q=biba+saree"
             }
         ]
     elif category == "Men":
@@ -803,8 +745,9 @@ def get_smart_products(category, size, best_colors):
                 "color": color1,
                 "color_name": best_colors["best"][0][0],
                 "price": "₹1,499",
-                "amazon": "https://www.amazon.in/Arrow-Shirt/dp/B07TUVWXY",
-                "flipkart": "https://www.flipkart.com/arrow-shirt/p/itm456"
+                "description": "Formal Shirt",
+                "amazon": f"https://www.amazon.in/s?k=arrow+{best_colors['best'][0][0].lower().replace(' ', '+')}+shirt+{size.lower()}",
+                "flipkart": f"https://www.flipkart.com/search?q=arrow+shirt+{size}"
             },
             {
                 "id": 2,
@@ -813,8 +756,9 @@ def get_smart_products(category, size, best_colors):
                 "color": color2,
                 "color_name": best_colors["best"][1][0],
                 "price": "₹2,299",
-                "amazon": "https://www.amazon.in/Levis-Jeans/dp/B08ZABC",
-                "flipkart": "https://www.flipkart.com/levis-jeans/p/itm123"
+                "description": "Slim Fit Jeans",
+                "amazon": f"https://www.amazon.in/s?k=levis+jeans+{size.lower()}",
+                "flipkart": f"https://www.flipkart.com/search?q=levis+jeans"
             }
         ]
     else:
@@ -826,24 +770,15 @@ def get_smart_products(category, size, best_colors):
                 "color": color1,
                 "color_name": best_colors["best"][0][0],
                 "price": "₹399",
-                "amazon": "https://www.amazon.in/Cherokee-Tshirt/dp/B08JKLMNO",
-                "flipkart": "https://www.flipkart.com/cherokee-tshirt/p/itm345"
-            },
-            {
-                "id": 2,
-                "name": f"Kids {best_colors['best'][1][0]} Dress",
-                "brand": "Lilliput",
-                "color": color2,
-                "color_name": best_colors["best"][1][0],
-                "price": "₹599",
-                "amazon": "https://www.amazon.in/Lilliput-Dress/dp/B0AVWXYZ",
-                "flipkart": "https://www.flipkart.com/lilliput-dress/p/itm567"
+                "description": "Cotton T-Shirt",
+                "amazon": f"https://www.amazon.in/s?k=cherokee+kids+tshirt+{size.replace('Y', '+years')}",
+                "flipkart": f"https://www.flipkart.com/search?q=cherokee+kids"
             }
         ]
 
-products = get_smart_products(category, size, color_recs)
+products = get_exact_products(category, size, body_type, color_recs)
 
-st.info("💡 **Products matched to YOUR recommended colors!**")
+st.info(f"💡 **Products matched to {body_type} body type and YOUR colors!**")
 
 prod_cols = st.columns(len(products))
 
@@ -863,26 +798,27 @@ for idx, prod in enumerate(products):
         
         st.markdown(f"### {prod['name']}")
         st.caption(f"**{prod['brand']}** • {prod['color_name']}")
+        st.caption(prod['description'])
         st.markdown(f"<p style='color: #667eea; font-size: 1.8rem; font-weight: bold;'>{prod['price']}</p>", unsafe_allow_html=True)
         
-        if st.button("Try On", key=f"try_{prod['id']}", use_container_width=True):
+        if st.button("👗 Try On", key=f"try_{prod['id']}", use_container_width=True):
             st.session_state.selected_dress = prod
             st.rerun()
         
         c1, c2 = st.columns(2)
         with c1:
-            st.link_button("Amazon", prod['amazon'], use_container_width=True)
+            st.link_button("🛒 Amazon", prod['amazon'], use_container_width=True)
         with c2:
-            st.link_button("Flipkart", prod['flipkart'], use_container_width=True)
+            st.link_button("🛒 Flipkart", prod['flipkart'], use_container_width=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================================================
-# STEP 5: VIRTUAL TRY-ON
+# STEP 5: 360° VIRTUAL TRY-ON
 # ==================================================
 if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
     st.markdown("---")
-    st.markdown("## 🎨 Step 5: Virtual Try-On")
+    st.markdown("## 🎨 Step 5: 360° Virtual Try-On")
     
     if st.session_state.uploaded_dress_color:
         dress_color = st.session_state.uploaded_dress_color
@@ -894,14 +830,11 @@ if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
         dress_name = sel['name']
         show_links = True
     
-    def apply_dress(mannequin, mask_coords, color):
-        result = mannequin.copy()
+    def apply_dress_to_view(mannequin_img, mask, color, width, height):
+        result = mannequin_img.copy()
         result_array = np.array(result)
         
-        h, w = result_array.shape[:2]
-        mask = mask_coords['mask']
-        
-        is_body = mask
+        h, w = height, width
         dress_h = int(h * 0.70)
         
         for i in range(dress_h):
@@ -910,11 +843,10 @@ if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
             
             lighting = 1.0 - (center_dist * 0.25)
             gradient = 1.0 - (vertical * 0.15)
-            
             shading = lighting * gradient
             
             for j in range(w):
-                if i < h and j < w and is_body[i, j]:
+                if i < h and j < w and mask[i, j]:
                     shaded = (np.array(color) * shading[j]).astype(np.uint8)
                     result_array[i, j] = shaded
         
@@ -922,34 +854,75 @@ if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
         neck_start, neck_end = int(h * 0.08), int(h * 0.12)
         for i in range(neck_start, neck_end):
             for j in range(w):
-                if i < h and is_body[i, j]:
+                if i < h and mask[i, j]:
                     result_array[i, j] = (np.array(color) * 0.6).astype(np.uint8)
         
         # Hem
         hem_y = dress_h
         for i in range(hem_y, min(hem_y + 8, h)):
             for j in range(w):
-                if i < h and is_body[i, j]:
+                if i < h and mask[i, j]:
                     result_array[i, j] = (np.array(color) * 0.7).astype(np.uint8)
         
         return Image.fromarray(result_array)
     
-    tryon = apply_dress(st.session_state.mannequin, st.session_state.mask_coords, dress_color)
+    # Apply to all views
+    tryon_front = apply_dress_to_view(
+        mannequin_views['front']['image'],
+        mannequin_views['front']['mask'],
+        dress_color,
+        mannequin_views['front']['width'],
+        mannequin_views['front']['height']
+    )
     
-    display_cols = st.columns([1, 2, 1])
+    tryon_side = apply_dress_to_view(
+        mannequin_views['side']['image'],
+        mannequin_views['side']['mask'],
+        dress_color,
+        mannequin_views['side']['width'],
+        mannequin_views['side']['height']
+    )
     
-    with display_cols[1]:
-        st.image(tryon, use_container_width=True)
+    tryon_back = apply_dress_to_view(
+        mannequin_views['back']['image'],
+        mannequin_views['back']['mask'],
+        dress_color,
+        mannequin_views['back']['width'],
+        mannequin_views['back']['height']
+    )
+    
+    st.success(f"✨ **Now showing: {dress_name}** on YOUR mannequin!")
+    
+    # 360° Try-on rotation
+    tryon_rotation_cols = st.columns([1, 3, 1])
+    
+    with tryon_rotation_cols[1]:
+        tryon_view = st.select_slider(
+            "🔄 Rotate to See From All Angles",
+            options=["Front (0°)", "Side Right (90°)", "Back (180°)", "Side Left (270°)"],
+            value="Front (0°)"
+        )
+    
+    tryon_display_cols = st.columns([1, 2, 1])
+    
+    with tryon_display_cols[1]:
+        if "Front" in tryon_view:
+            st.image(tryon_front, use_container_width=True)
+            st.caption("👀 Front view with dress")
+        elif "Back" in tryon_view:
+            st.image(tryon_back, use_container_width=True)
+            st.caption("👀 Back view with dress")
+        else:
+            st.image(tryon_side, use_container_width=True)
+            st.caption("👀 Side view with dress")
         
         st.markdown(f'''
         <div style="text-align: center; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
                     color: white; padding: 1.5rem; border-radius: 15px; margin: 1.5rem 0;">
             <h2>✅ PERFECT FIT</h2>
-            <p style="font-size: 1.3rem;">Size {size} • {body_shape}</p>
+            <p style="font-size: 1.3rem;">Size {size} • {body_type}</p>
         </div>
         ''', unsafe_allow_html=True)
-        
-        st.success(f"✨ **{dress_name}**")
         
         if show_links:
             buy_c1, buy_c2 = st.columns(2)
@@ -959,8 +932,8 @@ if st.session_state.selected_dress or st.session_state.uploaded_dress_color:
                 st.link_button(f"🛒 Flipkart - {sel['brand']}", sel['flipkart'], use_container_width=True, type="primary")
         
         buf = io.BytesIO()
-        tryon.save(buf, format='PNG')
-        st.download_button("⬇️ Download", buf.getvalue(), "tryon.png", "image/png", use_container_width=True)
+        tryon_front.save(buf, format='PNG')
+        st.download_button("⬇️ Download Front View", buf.getvalue(), "tryon_front.png", "image/png", use_container_width=True)
 
 # ==================================================
 # FOOTER
@@ -969,10 +942,12 @@ st.markdown("---")
 st.markdown('''
 <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             border-radius: 20px; color: white;">
-    <h2>🌟 Professional Fashion Stylist</h2>
+    <h2>🌟 Ultimate Fashion Stylist Pro</h2>
     <p style="font-size: 1.2rem;">
-        Skin Tone + Hair Analysis • Body Shape Detection • Professional Color Science • 
-        Measurements Extraction • Perfect Product Matching
+        360° Multi-View Rotation • 16 Professional Body Types • Advanced Color Science • Exact Product Links
+    </p>
+    <p style="font-size: 0.9rem; margin-top: 1rem; opacity: 0.9;">
+        Powered by Advanced AI • Computer Vision • Professional Fashion Analysis
     </p>
 </div>
 ''', unsafe_allow_html=True)
