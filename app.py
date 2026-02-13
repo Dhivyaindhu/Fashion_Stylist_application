@@ -637,17 +637,37 @@ with cb:
     st.markdown(f"<div class='card'><h4 style='color:#302b63;margin-top:0'>🎯 Body Type</h4><h2 style='color:#667eea;margin:.2rem 0'>{bt}</h2><p style='color:#555;font-size:.9rem'>{bt_info['desc']}</p><hr style='margin:.8rem 0;border:0;border-top:1px solid #eee'><h4 style='color:#302b63'>👗 Flattering Styles</h4>{sty}<h4 style='color:#e53e3e;margin-top:1rem'>✗ Avoid</h4>{avd}</div>",unsafe_allow_html=True)
 
 with cc:
-    chips="".join(f"<span class='color-chip' style='background:{HEX_COLORS.get(c,\"#ccc\")}' title='{c}'></span>" for c in tone_info["flattering"][:8])
-    st.markdown(f"<div class='card'><h4 style='color:#302b63;margin-top:0'>🎨 Skin Tone</h4><div style='display:flex;align-items:center;gap:1rem;margin:.5rem 0'><div style='width:56px;height:56px;border-radius:50%;background:{skin_hex};border:3px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,.15)'></div><div><strong style='font-size:1.2rem'>{tone_info['label']}</strong><br><span style='color:#888;font-size:.85rem'>ITA method</span></div></div><hr style='margin:.8rem 0;border:0;border-top:1px solid #eee'><h5 style='color:#28a745'>✅ Flattering</h5>{chips}<div style='margin-top:.4rem;font-size:.8rem;color:#555'>{'  ·  '.join(tone_info['flattering'][:6])}</div><h5 style='color:#e53e3e;margin-top:.8rem'>✗ Avoid</h5><div style='font-size:.85rem;color:#888'>{'  ·  '.join(tone_info['avoid'])}</div></div>",unsafe_allow_html=True)
+    def _chip(c):
+        bg = HEX_COLORS.get(c, "#ccc")
+        return f"<span class='color-chip' style='background:{bg}' title='{c}'></span>"
+    chips        = "".join(_chip(c) for c in tone_info["flattering"][:8])
+    flat_str     = "  ·  ".join(tone_info["flattering"][:6])
+    avoid_str    = "  ·  ".join(tone_info["avoid"])
+    tone_label   = tone_info["label"]
+    st.markdown(
+        f"<div class='card'>"
+        f"<h4 style='color:#302b63;margin-top:0'>🎨 Skin Tone</h4>"
+        f"<div style='display:flex;align-items:center;gap:1rem;margin:.5rem 0'>"
+        f"<div style='width:56px;height:56px;border-radius:50%;background:{skin_hex};"
+        f"border:3px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,.15)'></div>"
+        f"<div><strong style='font-size:1.2rem'>{tone_label}</strong><br>"
+        f"<span style='color:#888;font-size:.85rem'>ITA method</span></div></div>"
+        f"<hr style='margin:.8rem 0;border:0;border-top:1px solid #eee'>"
+        f"<h5 style='color:#28a745'>✅ Flattering</h5>{chips}"
+        f"<div style='margin-top:.4rem;font-size:.8rem;color:#555'>{flat_str}</div>"
+        f"<h5 style='color:#e53e3e;margin-top:.8rem'>✗ Avoid</h5>"
+        f"<div style='font-size:.85rem;color:#888'>{avoid_str}</div></div>",
+        unsafe_allow_html=True)
 
 st.markdown("#### 📏 Estimated Measurements")
+inch = '"'   # inch symbol — avoids backslash-in-f-string on older Python
 for col,(lab,val,sub) in zip(st.columns(6),[
-    ("Height",  f"{m.get('height_cm','—')} cm",  f"{m.get('height_in','—')}\""),
-    ("Shoulder",f"{m.get('shoulder_cm','—')} cm", ""),
-    ("Chest",   f"{m.get('chest_cm','—')} cm",    ""),
-    ("Waist",   f"{m.get('waist_cm','—')} cm",    f"{m.get('waist_in','—')}\""),
-    ("Hip",     f"{m.get('hip_cm','—')} cm",      f"{m.get('hip_in','—')}\""),
-    ("Size",    size,                             "Recommended"),
+    ("Height",   f"{m.get('height_cm','—')} cm",  f"{m.get('height_in','—')}{inch}"),
+    ("Shoulder", f"{m.get('shoulder_cm','—')} cm", ""),
+    ("Chest",    f"{m.get('chest_cm','—')} cm",    ""),
+    ("Waist",    f"{m.get('waist_cm','—')} cm",    f"{m.get('waist_in','—')}{inch}"),
+    ("Hip",      f"{m.get('hip_cm','—')} cm",      f"{m.get('hip_in','—')}{inch}"),
+    ("Size",     size,                             "Recommended"),
 ]):
     col.markdown(f"<div class='measure-box'><h4>{lab}</h4><div class='val'>{val}</div><div class='sub'>{sub}</div></div>",unsafe_allow_html=True)
 
