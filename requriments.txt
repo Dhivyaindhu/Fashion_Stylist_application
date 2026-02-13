@@ -1,3 +1,10 @@
-streamlit
-numpy
-pillow
+# Core — always required
+streamlit>=1.32.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# AI / ML — optional but highly recommended
+mediapipe>=0.10.0    # Pose estimation (33 body landmarks)
+rembg>=2.0.50        # Neural background removal for dress segmentation
+
+# NOTE: opencv-python is NOT required or used in this version
