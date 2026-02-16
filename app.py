@@ -728,4 +728,7 @@ if dress_file:
 
 st.markdown("---")
 st.markdown("<div style='text-align:center;padding:2rem;background:linear-gradient(135deg,#0f0c29,#302b63);border-radius:20px;color:#fff;'><h3 style='font-family:\"DM Serif Display\",serif;margin:0'>👗 3D Fashion Stylist Pro</h3><p style='opacity:.7;margin:.5rem 0 0'>PIL · NumPy · ITA Skin Analysis · 360° Mannequin · Virtual Try-On</p></div>",unsafe_allow_html=True)
+#stylist fashion stylist app got updated...
+
+
 
