@@ -1,6 +1,6 @@
 import streamlit as st
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 import io
 import math
 
@@ -393,38 +393,49 @@ PLATFORM_COLORS = {
 def extract_clothing_from_product_image(product_img):
     """
     Extract ONLY the clothing from product images (with models).
+    ENHANCED VERSION: Produces clear, bright extracted dresses.
     Removes: model's skin (face, hands, legs) and background.
-    Returns: Dress with transparent background (RGBA).
+    Returns: Dress with transparent background (RGBA) - BRIGHTENED & CLEAR.
     """
     
-    img_array = np.array(product_img.convert("RGB"))
+    # Convert and enhance brightness FIRST
+    img = product_img.convert("RGB")
+    
+    # Brightness enhancement for dark dresses
+    enhancer = ImageEnhance.Brightness(img)
+    img_enhanced = enhancer.enhance(1.3)  # 30% brighter
+    
+    # Contrast enhancement for clarity
+    enhancer2 = ImageEnhance.Contrast(img_enhanced)
+    img_enhanced = enhancer2.enhance(1.2)  # 20% more contrast
+    
+    img_array = np.array(img_enhanced)
     h, w = img_array.shape[:2]
     
     r = img_array[:,:,0].astype(float)
     g = img_array[:,:,1].astype(float)
     b = img_array[:,:,2].astype(float)
     
-    # ── Step 1: Detect skin tones ────────────────────────────
-    # Multiple skin tone detection (fair to deep)
+    # ── Step 1: IMPROVED Skin Detection ──────────────────────
     skin_mask = np.zeros((h, w), dtype=bool)
     
-    # Fair to medium skin
-    condition1 = (r > 95) & (g > 40) & (b > 20)
+    # Fair to medium skin (IMPROVED DETECTION)
+    condition1 = (r > 85) & (g > 35) & (b > 15)
     condition2 = (r > g) & (r > b)
-    condition3 = (abs(r - g) > 15)
-    condition4 = (r - b > 15)
+    condition3 = (abs(r - g) > 12)
+    condition4 = (r - b > 12)
     fair_medium = condition1 & condition2 & condition3 & condition4
     
-    # Tan to deep skin
-    condition5 = (r > 50) & (g > 30) & (b > 15)
+    # Tan to deep skin (IMPROVED)
+    condition5 = (r > 45) & (g > 25) & (b > 10)
     condition6 = (r > g) & (g > b)
-    condition7 = (r - g < 50)
+    condition7 = (r - g < 55)
     tan_deep = condition5 & condition6 & condition7
     
     skin_mask = fair_medium | tan_deep
     
-    # Expand skin regions
-    for _ in range(3):
+    # Expand skin regions (MORE AGGRESSIVE)
+    for _ in range(5):  # Increased from 3 to 5
         temp = skin_mask.copy()
         for i in range(1, h-1):
             for j in range(1, w-1):
@@ -432,43 +443,53 @@ def extract_clothing_from_product_image(product_img):
                     temp[max(0,i-1):min(h,i+2), max(0,j-1):min(w,j+2)] = True
         skin_mask = temp
     
-    # ── Step 2: Detect background ────────────────────────────
+    # ── Step 2: IMPROVED Background Detection ────────────────
     brightness = (r + g + b) / 3
     
-    # Very light (white studio background)
-    bg_mask = brightness > 240
+    # Very light background (white/cream)
+    bg_mask = brightness > 235
     
     # Very dark background
-    bg_mask = bg_mask | (brightness < 20)
+    bg_mask = bg_mask | (brightness < 15)
+    
+    # Gray backgrounds (common in product photos)
+    is_gray = (abs(r - g) < 15) & (abs(g - b) < 15) & (abs(r - b) < 15)
+    bg_mask = bg_mask | (is_gray & (brightness > 200))
     
     # ── Step 3: Clothing = NOT (skin OR background) ──────────
     clothing_mask = ~(skin_mask | bg_mask)
     
-    # Focus on center region (where clothing usually is)
-    center_mask = np.zeros((h, w), dtype=bool)
-    center_mask[h//8:7*h//8, w//6:5*w//6] = True
-    clothing_mask = clothing_mask & center_mask
+    # DON'T restrict to center - keep full image
+    # This helps with dresses that flow to edges
     
-    # ── Step 4: Clean up noise ───────────────────────────────
-    # Remove very small isolated pixels
+    # ── Step 4: BETTER Noise Cleanup ─────────────────────────
+    # Remove small isolated regions
     for i in range(h):
         for j in range(w):
             if clothing_mask[i, j]:
                 neighbors = 0
-                for di in [-1, 0, 1]:
-                    for dj in [-1, 0, 1]:
+                for di in range(-2, 3):  # Larger neighborhood
+                    for dj in range(-2, 3):
                         if 0 <= i+di < h and 0 <= j+dj < w:
                             if clothing_mask[i+di, j+dj]:
                                 neighbors += 1
-                if neighbors < 3:
+                if neighbors < 5:  # Stricter threshold
                     clothing_mask[i, j] = False
     
-    # ── Step 5: Create RGBA output ───────────────────────────
+    # ── Step 5: Create BRIGHT CLEAR RGBA output ──────────────
     result_array = np.zeros((h, w, 4), dtype=np.uint8)
+    
+    # Use ENHANCED bright image
     result_array[:,:,:3] = img_array
-    result_array[:,:,3] = (clothing_mask * 255).astype(np.uint8)
+    
+    # Smooth alpha channel for better edges
+    alpha_channel = (clothing_mask * 255).astype(np.uint8)
+    result_array[:,:,3] = alpha_channel
     
     result = Image.fromarray(result_array, 'RGBA')
+    
+    # Apply edge smoothing
+    result = result.filter(ImageFilter.SMOOTH)
     
     # ── Step 6: Crop to bounding box ─────────────────────────
     rows = np.any(clothing_mask, axis=1)
@@ -477,6 +498,14 @@ def extract_clothing_from_product_image(product_img):
     if rows.any() and cols.any():
         rmin, rmax = np.where(rows)[0][[0, -1]]
         cmin, cmax = np.where(cols)[0][[0, -1]]
+        
+        # Add padding for better display
+        padding = 10
+        rmin = max(0, rmin - padding)
+        rmax = min(h, rmax + padding)
+        cmin = max(0, cmin - padding)
+        cmax = min(w, cmax + padding)
+        
         result = result.crop((cmin, rmin, cmax, rmax))
     
     return result
